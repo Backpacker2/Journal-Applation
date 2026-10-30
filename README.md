@@ -1,4 +1,4 @@
-# Leerjournaal (versie 0.2)
+# Leerjournaal
 
 Leg je gedachten vast per **project** (school, werk) of per **chat** (alles waar je even over wilt nadenken).
 Elke gedachte wordt een los, versleuteld `.txt`-bestand met de datum en tijd in de naam. Alles gaat via git naar
@@ -18,11 +18,17 @@ van, volgens een template dat je per project of chat zelf instelt.
 
 ## Installeren (Mac)
 
+Je installeert de app één keer als git-clone. Daarna komen alle nieuwe functies binnen via de knop
+**Nu bijwerken** in de app; je hoeft nooit meer iets opnieuw te koppelen.
+
 1. Installeer Node.js 18 of nieuwer: `brew install node` (of via nodejs.org).
-2. Pak de map uit op een vaste plek, bijvoorbeeld `~/Leerjournaal`.
-3. Kopieer de instellingen: `cp config.example.json config.json`
-4. Pas `config.json` aan (zie hieronder).
-5. Start de app: dubbelklik `start.command`, of `npm start` in de terminal. Open http://localhost:4173.
+2. Clone de app-repository naar een vaste plek:
+   ```bash
+   git clone git@github.com:jouw-naam/Journal-Data.git ~/Leerjournaal
+   cd ~/Leerjournaal
+   ```
+3. Kopieer de instellingen: `cp config.example.json config.json` en pas ze aan (zie hieronder).
+4. Start de app: dubbelklik `start.command`, of `npm start` in de terminal. Open http://localhost:4173.
 
 > Bij de eerste start maakt de app een nieuwe sleutel. **Maak daar meteen een back-up van.** Zonder sleutel zijn je
 > gedachten voorgoed onleesbaar.
@@ -42,7 +48,9 @@ van, volgens een template dat je per project of chat zelf instelt.
 **Tip:** zet alleen de **sleutel** in iCloud, niet de hele `data`-map. iCloud en git werken slecht samen
 (iCloud kan bestanden in `.git` halverwege synchroniseren). GitHub is al de back-up van je data.
 
-## Koppelen aan GitHub
+## Je gedachten koppelen aan GitHub
+
+Je gedachten gaan naar een **tweede, aparte** repository. Zo staan app-code en data nooit door elkaar.
 
 1. Maak op GitHub een **privé** repository aan, bijvoorbeeld `leerjournaal-data` (zonder README).
 2. Koppel hem in de terminal:
@@ -66,11 +74,19 @@ data/
     ...
 ```
 
-## Updaten zonder iets kwijt te raken
+## Updaten
 
-De app-code en je data zijn gescheiden. Een update vervangt alleen de app-bestanden (`server.js`, `lib/`, `public/`).
-De map `data/`, `config.json` en je sleutel blijven altijd staan. Zet je de app-code later zelf in git, dan is
-updaten gewoon `git pull` in de app-map.
+Staat er een nieuwe versie op GitHub, dan zie je linksonder **Update beschikbaar** met een lijstje van wat er
+nieuw is. Klik op **Nu bijwerken**: de app haalt de nieuwe code op, start zichzelf opnieuw en laadt de pagina.
+
+- Je gedachten (`data/`), `config.json` en je sleutel staan in `.gitignore`. Een update raakt ze nooit.
+- Heb je zelf app-bestanden aangepast, dan wacht de update tot je die hebt gecommit, zodat er niets verloren gaat.
+- Liever in de terminal? `git pull` in `~/Leerjournaal` en daarna de app opnieuw starten werkt ook.
+
+| Repository | Wat erin staat | Wie wijzigt |
+|---|---|---|
+| `jouw-naam/Journal-Data` | de app-code | jij en Claude; updates via de knop |
+| `leerjournaal-data` (privé) | je versleutelde gedachten en documenten | alleen de app, via *Sync met GitHub* |
 
 ## Veiligheid
 

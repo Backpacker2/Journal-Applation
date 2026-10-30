@@ -83,6 +83,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .sync-line { display: flex; align-items: center; gap: 8px; color: #fff; font-size: 12px; font-weight: 500; }
 .sync-sub { font-size: 11px; color: #8a90a3; }
 .update-box { background: #1f2440; border: 1px solid #3a3f78; border-radius: 10px; padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; color: #fff; font-size: 12px; }
+.update-box[hidden] { display: none; }
+.sidebar .update-box .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .update-box b { font-size: 13px; }
 .update-box ul { margin: 0; padding-left: 16px; color: #b9bdf0; max-height: 120px; overflow-y: auto; }
 .update-box .warn { color: #e0a645; }
