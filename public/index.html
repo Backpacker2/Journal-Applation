@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="nl" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leerjournaal</title>
+  <link rel="stylesheet" href="/style.css">
+  <script>try { const t = localStorage.getItem('lj-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">L</span><span>Leerjournaal</span></div>
+
+    <div class="section-head">
+      <span>Projecten</span>
+      <button class="icon-btn" data-new="projecten" title="Nieuw project">+</button>
+    </div>
+    <nav id="list-projecten" class="space-list"></nav>
+
+    <div class="section-head">
+      <span>Chats</span>
+      <button class="icon-btn" data-new="chats" title="Nieuwe chat">+</button>
+    </div>
+    <nav id="list-chats" class="space-list"></nav>
+
+    <div class="spacer"></div>
+
+    <div id="update-box" class="update-box" hidden></div>
+
+    <div class="sync-box">
+      <div class="sync-line"><span class="dot ok"></span><span>Versleuteld (AES-256)</span></div>
+      <div id="sync-status" class="sync-sub">Laden…</div>
+      <div class="sync-actions">
+        <button id="sync-btn" class="btn small">Sync met GitHub</button>
+        <button id="theme-btn" class="btn small ghost" title="Licht of donker thema">Thema</button>
+      </div>
+      <div id="version" class="version"></div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div class="empty-state">
+      <h1>Welkom bij je leerjournaal</h1>
+      <p>Maak links een <strong>project</strong> aan voor school of werk, of een <strong>chat</strong> voor iets waar je gewoon even over wilt nadenken.</p>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

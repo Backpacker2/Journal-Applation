@@ -1,0 +1,11 @@
+# Persoonlijke instellingen en geheimen: NOOIT committen
+config.json
+secret.key
+*.key
+
+# Je eigen gedachten staan in een aparte (versleutelde) data-repository
+data/
+
+node_modules/
+.DS_Store
+*.tmp
