@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('./lib/config');
-const { loadKeyring, parseKey, keyId } = require('./lib/crypto');
+const { loadKeyring, loadExtraKeys, parseKey, keyId } = require('./lib/crypto');
 const { Store } = require('./lib/store');
 const { Git } = require('./lib/git');
 const ai = require('./lib/ai');
@@ -59,6 +59,7 @@ route('GET', '/api/status', async () => ({
 
 // ---------- sleutels ----------
 route('GET', '/api/keys', async () => {
+  loadExtraKeys(ring, cfg, true); // pakt sleutels op die net met "npm run sleutels" zijn toegevoegd
   const stats = store.keyStats();
   return {
     keyDir, primaryId: ring.primaryId,
@@ -93,7 +94,7 @@ route('POST', '/api/update', async () => {
   return r;
 });
 
-route('GET', '/api/spaces', async () => store.listSpaces());
+route('GET', '/api/spaces', async () => { loadExtraKeys(ring, cfg, true); return store.listSpaces(); });
 
 route('POST', '/api/spaces', async (p, body) => {
   const s = store.createSpace(body.type, body.name);
