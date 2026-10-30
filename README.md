@@ -31,7 +31,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 - **Werkt ook zonder API-sleutel**: "Kopieer prompt", plakken in Claude, en het resultaat terugzetten met "Plak resultaat"
 - **Versleuteling** van alle inhoud én van de namen van je projecten en chats (AES-256-GCM)
 - **Meerdere sleutels**: oude sleutels toevoegen, zodat je data van vorige versies leesbaar blijft
-- **Automatische git-commit** bij elke wijziging en een **Sync-knop** voor GitHub
+- **Automatisch naar GitHub**: elke wijziging wordt binnen een paar seconden geüpload; lukt dat niet, dan probeert de app het later opnieuw
 - **Updates via de app**: knop *Nu bijwerken*, de app start zichzelf opnieuw
 - Standaard een **donker thema** (knop *Thema* wisselt naar licht)
 
@@ -80,7 +80,8 @@ git branch -u origin/main
 | `extraKeyFiles` | Paden naar oude sleutels. Elk `.key`-bestand naast je hoofdsleutel wordt ook geladen | `[]` |
 | `anthropicApiKey` | Nodig voor de knoppen *AI-vragen* en *Genereer ruwe versie* | leeg |
 | `model` | Het Claude-model voor de AI-functies | `claude-sonnet-5-5` |
-| `autoSyncMinutes` | `0` = alleen syncen via de knop; bijvoorbeeld `15` = elk kwartier | `0` |
+| `autoSync` | Na elke nieuwe of aangepaste gedachte, vraag of document automatisch uploaden naar GitHub | `true` |
+| `autoSyncMinutes` | Daarnaast elke zoveel minuten ophalen en uploaden (handig als je ook op je telefoon schrijft); `0` = uit | `10` |
 
 Paden mogen met `~` beginnen. `config.json`, `data/` en alle `.key`-bestanden staan in `.gitignore`, dus ze komen
 nooit in de app-repository terecht.
@@ -173,7 +174,13 @@ Je gedachten gaan naar een **tweede, aparte** repository. Zo staan app-code en d
    cd ~/Leerjournaal/data
    git remote add origin https://github.com/jouw-naam/Journal-Data.git
    ```
-3. Klik in de app op **Sync met GitHub**. Wil je automatisch syncen, zet dan `autoSyncMinutes` in `config.json`.
+3. Klik in de app één keer op **Sync met GitHub**. Daarna gaat alles vanzelf:
+   - elke nieuwe of aangepaste gedachte, vraag of document wordt na een paar seconden geüpload;
+   - linksonder zie je de status: *wijziging wacht op upload*, *Uploaden…* of *Alles staat op GitHub*;
+   - zonder internet blijft alles gewoon lokaal staan; de app probeert het later opnieuw (na 30 s, 1 min, 2 min, … tot 10 min);
+   - heb je de repository op GitHub hernoemd, dan neemt de app het nieuwe adres zelf over.
+
+   Liever met de hand? Zet `"autoSync": false` in `config.json` en gebruik de knop.
 
 ## 7. Updaten
 
@@ -232,7 +239,7 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 | *Vergrendeld · sleutel ontbreekt* in de zijbalk | `npm run sleutels`, of de oude sleutel plakken via **Sleutels** |
 | Mijn oude gedachten zijn weg | Ze staan waarschijnlijk in de `data`-map van je vorige versie. `npm run sleutels` laat zien waar |
 | *Nog geen GitHub-remote ingesteld* | Volg [hoofdstuk 6](#6-je-gedachten-koppelen-aan-github) |
-| Sync mislukt | Controleer of je in de terminal kunt pushen (`cd data && git push`); vaak is het een SSH- of inlogprobleem |
+| Upload mislukt | Klik linksonder op de status voor de uitleg. Alles staat in `data/.git/leerjournaal-sync.log`. Test in de terminal: `cd data && git push` |
 | Update wil niet | Je hebt app-bestanden aangepast: `git status` in de app-map, commit of herstel ze |
 | AI-knoppen geven een fout | Zet `anthropicApiKey` in `config.json`, of gebruik *Kopieer prompt* |
 | De app start niet | Staat Node.js erop? `node --version` moet 18 of hoger zijn |

@@ -5,5 +5,6 @@
   "extraKeyFiles": [],
   "anthropicApiKey": "",
   "model": "claude-sonnet-5-5",
-  "autoSyncMinutes": 0
+  "autoSync": true,
+  "autoSyncMinutes": 10
 }

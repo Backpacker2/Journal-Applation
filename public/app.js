@@ -21,6 +21,10 @@ async function api(method, url, body) {
   const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `Fout ${res.status}`);
+  if (method !== 'GET' && !url.startsWith('/api/sync') && !url.startsWith('/api/update')) {
+    // Wijziging opgeslagen: de server uploadt hem zo naar GitHub; toon de voortgang.
+    [600, 5500, 12000].forEach(ms => setTimeout(() => loadStatus(), ms));
+  }
   return json;
 }
 let toastTimer;
@@ -414,10 +418,16 @@ async function loadStatus() {
   try {
     state.status = await api('GET', '/api/status');
     const s = state.status;
+    const hhmm = iso => new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    const n = s.pending > 0 ? s.pending : 0;
+    const dot = $('.sync-line .dot');
     $('#sync-status').textContent = !s.hasRemote ? 'Lokaal opgeslagen · nog geen GitHub gekoppeld'
-      : s.lastSyncError ? `Laatste sync mislukt (${esc(s.lastSyncError.step || '')}) · klik voor details`
-      : s.lastSync ? `GitHub-sync · ${new Date(s.lastSync).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
+      : s.syncing ? 'Uploaden naar GitHub…'
+      : s.lastSyncError ? `Upload mislukt${s.nextRetry ? ` · opnieuw om ${hhmm(s.nextRetry)}` : ''} · klik voor details`
+      : n ? `${n} ${n === 1 ? 'wijziging wacht' : 'wijzigingen wachten'} op upload…`
+      : s.lastSync ? `Alles staat op GitHub · ${hhmm(s.lastSync)}`
       : 'GitHub gekoppeld · nog niet gesynchroniseerd';
+    if (dot) dot.style.background = !s.hasRemote ? '' : s.lastSyncError ? 'var(--red)' : (s.syncing || n) ? 'var(--amber)' : '';
     const st = $('#sync-status');
     st.style.cursor = s.lastSyncError ? 'pointer' : '';
     st.onclick = s.lastSyncError ? () => alert(`Sync mislukt bij ${s.lastSyncError.step}.\n\n${s.lastSyncError.message}\n\nTechnische melding:\n${s.lastSyncError.detail}`) : null;
@@ -525,6 +535,7 @@ async function applyUpdate(e) {
   await Promise.all([loadSpaces().catch(fail), loadStatus()]);
   checkUpdate();
   setInterval(checkUpdate, 30 * 60e3);
+  setInterval(loadStatus, 15e3);
   const locked = state.spaces.filter(s => s.locked).length;
   if (locked && locked === state.spaces.length) return openKeys();
   if (locked) toast(`${locked} ${locked === 1 ? 'ruimte is' : 'ruimtes zijn'} vergrendeld. Voeg je oude sleutel toe via Sleutels.`, true);

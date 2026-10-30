@@ -261,8 +261,12 @@ async function handleBusyPort() {
     await git.commit('Mapnamen vervangen door willekeurige codes');
     console.log(`  ${renamed} map(pen) hernoemd naar een willekeurige code, zodat namen niet meer leesbaar zijn.`);
   }
+  if (cfg.autoSync) {
+    git.enableAutoSync();
+    git.scheduleSync(1500); // wijzigingen die nog niet op GitHub staan meteen uploaden
+  }
   if (cfg.autoSyncMinutes > 0) {
-    setInterval(() => git.sync().catch(e => console.warn('Auto-sync mislukt:', e.message)), cfg.autoSyncMinutes * 60e3);
+    setInterval(() => git.backgroundSync(), cfg.autoSyncMinutes * 60e3);
   }
   markReady();
   console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
