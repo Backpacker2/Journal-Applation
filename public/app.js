@@ -415,9 +415,12 @@ async function loadStatus() {
     state.status = await api('GET', '/api/status');
     const s = state.status;
     $('#sync-status').textContent = !s.hasRemote ? 'Lokaal opgeslagen · nog geen GitHub gekoppeld'
-      : s.lastSyncError ? 'Laatste sync mislukt'
+      : s.lastSyncError ? `Laatste sync mislukt (${esc(s.lastSyncError.step || '')}) · klik voor details`
       : s.lastSync ? `GitHub-sync · ${new Date(s.lastSync).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
       : 'GitHub gekoppeld · nog niet gesynchroniseerd';
+    const st = $('#sync-status');
+    st.style.cursor = s.lastSyncError ? 'pointer' : '';
+    st.onclick = s.lastSyncError ? () => alert(`Sync mislukt bij ${s.lastSyncError.step}.\n\n${s.lastSyncError.message}\n\nTechnische melding:\n${s.lastSyncError.detail}`) : null;
     if (s.keyCreatedNow && !sessionStorage.getItem('lj-key-warned')) {
       sessionStorage.setItem('lj-key-warned', '1');
       toast(`Nieuwe sleutel gemaakt in ${s.keyFile}. Maak er een back-up van!`, true);
