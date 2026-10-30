@@ -4,15 +4,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('./lib/config');
-const { loadOrCreateKey } = require('./lib/crypto');
+const { loadKeyring, parseKey, keyId } = require('./lib/crypto');
 const { Store } = require('./lib/store');
 const { Git } = require('./lib/git');
 const ai = require('./lib/ai');
 const { Updater } = require('./lib/updater');
 
 const cfg = loadConfig();
-const { key, created: keyCreated } = loadOrCreateKey(cfg.keyFile);
-const store = new Store(cfg.dataDir, key);
+const { ring, created: keyCreated, keyDir } = loadKeyring(cfg);
+const store = new Store(cfg.dataDir, ring);
 const git = new Git(cfg.dataDir);
 const updater = new Updater(cfg.appDir);
 
@@ -56,6 +56,33 @@ route('GET', '/api/status', async () => ({
   keyCreatedNow: keyCreated,
   ...(await updater.version())
 }));
+
+// ---------- sleutels ----------
+route('GET', '/api/keys', async () => {
+  const stats = store.keyStats();
+  return {
+    keyDir, primaryId: ring.primaryId,
+    keys: ring.list().map(k => ({ ...k, files: stats.perKey[k.id] || 0 })),
+    total: stats.total, unreadable: stats.unreadable,
+    missing: Object.entries(stats.missing).map(([id, files]) => ({ id, files }))
+  };
+});
+
+route('POST', '/api/keys', async (p, body) => {
+  const key = parseKey(body.key);
+  const id = keyId(key);
+  if (ring.keys.some(k => k.id === id)) return { id, added: false, message: 'Deze sleutel stond er al in.' };
+  const file = path.join(keyDir, `oud-${id}.key`);
+  fs.writeFileSync(file, key.toString('base64') + '\n', { mode: 0o600 });
+  ring.add(key, path.basename(file));
+  return { id, added: true, file };
+});
+
+route('POST', '/api/keys/rekey', async () => {
+  const r = store.rekey();
+  if (r.changed) await git.commit('Bestanden opnieuw versleuteld met de huidige sleutel');
+  return r;
+});
 
 // ---------- updates van de app zelf ----------
 route('GET', '/api/update', async () => updater.check());
@@ -172,6 +199,7 @@ const server = http.createServer(async (req, res) => {
     console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
     console.log(`  Data:    ${cfg.dataDir}`);
     console.log(`  Sleutel: ${cfg.keyFile}`);
+    if (ring.keys.length > 1) console.log(`  + ${ring.keys.length - 1} oude sleutel(s) om oudere bestanden te lezen`);
     if (keyCreated) console.log('\n  ⚠  Er is een NIEUWE sleutel gemaakt. Maak er nu een back-up van (iCloud of wachtwoordmanager)!');
     if (!cfg.anthropicApiKey) console.log('\n  ℹ  Geen API-sleutel ingesteld: AI-knoppen werken via "Kopieer prompt".');
     console.log('');

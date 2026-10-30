@@ -2,6 +2,7 @@
   "port": 4173,
   "dataDir": "./data",
   "keyFile": "~/Library/Mobile Documents/com~apple~CloudDocs/Leerjournaal/secret.key",
+  "extraKeyFiles": [],
   "anthropicApiKey": "",
   "model": "claude-sonnet-5-5",
   "autoSyncMinutes": 0

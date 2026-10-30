@@ -84,6 +84,8 @@ function renderSidebar() {
   for (const type of ['projecten', 'chats']) {
     const items = state.spaces.filter(s => s.type === type).sort((a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.lastEntry || a.createdAt || ''));
     $('#list-' + type).innerHTML = items.length ? items.map(s => {
+      if (s.locked) return `<button class="space-item locked" data-open-keys="1" title="Versleuteld met een sleutel die ontbreekt">
+        <span class="dot"></span><span class="name">Vergrendeld · sleutel ontbreekt</span></button>`;
       const active = state.current && state.current.type === type && state.current.slug === s.slug;
       return `<button class="space-item${active ? ' active' : ''}" data-type="${type}" data-slug="${esc(s.slug)}">
         <span class="dot" style="background:${type === 'projecten' ? 'var(--accent)' : 'var(--green)'}"></span>
@@ -92,6 +94,7 @@ function renderSidebar() {
   }
 }
 document.addEventListener('click', async e => {
+  if (e.target.closest('[data-open-keys]')) return openKeys();
   const item = e.target.closest('.space-item');
   if (item) return openSpace(item.dataset.type, item.dataset.slug);
   const nw = e.target.closest('[data-new]');
@@ -150,6 +153,8 @@ $('#main').addEventListener('click', async e => {
   if (t.dataset.view) { state.view = t.dataset.view; state.openDoc = null; state.docEdit = false; return render(); }
   const a = t.dataset.action;
   try {
+    if (a === 'add-key') return addKey(t);
+    if (a === 'rekey') return rekey(t);
     if (a === 'goto-docs') { state.view = 'documenten'; state.openDoc = null; return render(); }
     if (a === 'reply') { state.replyTo = t.dataset.id; state.composeMode = 'gedachte'; renderComposer(); $('#compose-input').focus(); }
     if (a === 'cancel-reply') { state.replyTo = null; renderComposer(); }
@@ -430,6 +435,57 @@ $('#theme-btn').addEventListener('click', () => {
   try { localStorage.setItem('lj-theme', next); } catch {}
 });
 
+// ---------- sleutels ----------
+async function openKeys() {
+  state.current = null; renderSidebar();
+  $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Sleutels</h1>
+    <div class="sub">Je hoofdsleutel versleutelt alles wat je nu schrijft. Oude sleutels gebruikt de app alleen om oudere bestanden te lezen.</div></div>
+    <div class="page"><div class="page-inner" id="keys-inner"><div class="hint">Laden…</div></div></div>`;
+  try {
+    const k = await api('GET', '/api/keys');
+    const onOld = k.keys.filter(x => !x.primary).reduce((n, x) => n + x.files, 0);
+    $('#keys-inner').innerHTML = `
+      ${k.unreadable
+        ? `<div class="notice bad">${k.unreadable} van de ${k.total} bestanden kan de app niet lezen.${k.missing.length ? ` Ontbrekende sleutel${k.missing.length > 1 ? 's' : ''}: ${k.missing.map(m => `<span class="mono">${esc(m.id)}</span> (${m.files})`).join(', ')}.` : ''} Voeg hieronder de oude sleutel toe.</div>`
+        : `<div class="notice ok">Alle ${k.total} bestanden zijn leesbaar.</div>`}
+      <div class="panel">
+        <h2>Je sleutels</h2>
+        <table class="key-table"><thead><tr><th>Sleutel-ID</th><th>Bestand</th><th>Rol</th><th>Bestanden</th></tr></thead><tbody>
+          ${k.keys.map(x => `<tr><td class="mono">${esc(x.id)}</td><td class="mono">${esc(x.source)}</td>
+            <td>${x.primary ? '<span class="badge project">Hoofdsleutel</span>' : '<span class="badge ruw">Oud, alleen lezen</span>'}</td><td>${x.files}</td></tr>`).join('')}
+        </tbody></table>
+        <div class="sub">Sleutels staan in <span class="mono">${esc(k.keyDir)}</span>. Elk <span class="mono">.key</span>-bestand in die map wordt automatisch geladen.</div>
+      </div>
+      <div class="panel">
+        <h2>Oude sleutel toevoegen</h2>
+        <div class="sub">Open het <code>secret.key</code> van je vorige versie en plak de inhoud hieronder. Op een Mac kopieer je hem met: <code>pbcopy &lt; pad/naar/oude-map/secret.key</code></div>
+        <textarea class="key-input" id="key-input" placeholder="Bijvoorbeeld: q3V9…=" spellcheck="false" autocomplete="off"></textarea>
+        <div class="row-end"><button class="btn primary" data-action="add-key">Sleutel toevoegen</button></div>
+      </div>
+      <div class="panel">
+        <h2>Alles omzetten naar je hoofdsleutel</h2>
+        <div class="sub">Versleutelt bestanden die nog met een oude sleutel zijn opgeslagen opnieuw met je hoofdsleutel. Daarna heb je alleen je hoofdsleutel nog nodig. Bewaar de oude sleutel toch, voor oudere versies in je GitHub-geschiedenis.</div>
+        <div class="row-end"><button class="btn" data-action="rekey" ${onOld ? '' : 'disabled'}>${onOld ? `${onOld} bestanden omzetten` : 'Niets om te zetten'}</button></div>
+      </div>`;
+  } catch (e) { fail(e); }
+}
+async function addKey(btn) {
+  const value = $('#key-input').value.trim();
+  if (!value) return toast('Plak eerst een sleutel', true);
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/api/keys', { key: value });
+    toast(r.added ? `Sleutel ${r.id} toegevoegd` : r.message);
+    await loadSpaces(); openKeys();
+  } catch (e) { fail(e); btn.disabled = false; }
+}
+async function rekey(btn) {
+  btn.disabled = true; btn.textContent = 'Bezig…';
+  try { const r = await api('POST', '/api/keys/rekey'); toast(`${r.changed} bestanden omgezet`); openKeys(); }
+  catch (e) { fail(e); btn.disabled = false; }
+}
+$('#keys-btn').addEventListener('click', openKeys);
+
 // ---------- updates ----------
 async function checkUpdate() {
   try {
@@ -465,6 +521,9 @@ async function applyUpdate(e) {
   await Promise.all([loadSpaces().catch(fail), loadStatus()]);
   checkUpdate();
   setInterval(checkUpdate, 30 * 60e3);
+  const locked = state.spaces.filter(s => s.locked).length;
+  if (locked && locked === state.spaces.length) return openKeys();
+  if (locked) toast(`${locked} ${locked === 1 ? 'ruimte is' : 'ruimtes zijn'} vergrendeld. Voeg je oude sleutel toe via Sleutels.`, true);
   let last = null; try { last = localStorage.getItem('lj-last'); } catch {}
   if (last) {
     const [type, slug] = last.split('/');

@@ -38,7 +38,8 @@ Je installeert de app één keer als git-clone. Daarna komen alle nieuwe functie
 | Instelling | Uitleg |
 |---|---|
 | `dataDir` | Map met je versleutelde gedachten. Wordt automatisch een eigen git-repo. Standaard `./data`. |
-| `keyFile` | Waar je sleutel staat. Het voorbeeld zet hem in iCloud Drive, zodat je hem niet kwijtraakt. |
+| `keyFile` | Waar je hoofdsleutel staat. Het voorbeeld zet hem in iCloud Drive, zodat je hem niet kwijtraakt. |
+| `extraKeyFiles` | Optioneel. Paden naar oude sleutels. Elk `.key`-bestand naast je hoofdsleutel wordt ook geladen. |
 | `anthropicApiKey` | Optioneel. Nodig voor de knoppen "AI-vragen" en "Genereer ruwe versie". |
 | `model` | Het Claude-model voor de AI-functies. |
 | `autoSyncMinutes` | `0` = alleen syncen via de knop. Bijvoorbeeld `15` = elk kwartier automatisch. |
@@ -47,6 +48,18 @@ Je installeert de app één keer als git-clone. Daarna komen alle nieuwe functie
 
 **Tip:** zet alleen de **sleutel** in iCloud, niet de hele `data`-map. iCloud en git werken slecht samen
 (iCloud kan bestanden in `.git` halverwege synchroniseren). GitHub is al de back-up van je data.
+
+## Meerdere sleutels
+
+Heb je bestanden die met een andere (oudere) sleutel zijn versleuteld, dan voeg je die sleutel toe en kun je alles weer lezen.
+
+- **In de app:** klik linksonder op **Sleutels**, plak de inhoud van je oude `secret.key` en klik op *Sleutel toevoegen*.
+  De app bewaart hem als `oud-<id>.key` naast je hoofdsleutel (dus ook in iCloud).
+- **Of handmatig:** zet het oude sleutelbestand met de extensie `.key` in dezelfde map als je hoofdsleutel,
+  of voeg het pad toe aan `extraKeyFiles` in `config.json`.
+- Nieuwe bestanden worden altijd met je **hoofdsleutel** versleuteld. Elk bestand onthoudt welke sleutel het nodig heeft.
+- Met **Alles omzetten naar je hoofdsleutel** worden oude bestanden opnieuw versleuteld. Daarna heb je alleen je hoofdsleutel
+  nog nodig. Bewaar de oude sleutel toch: oudere versies in je GitHub-geschiedenis zijn er nog mee versleuteld.
 
 ## Je gedachten koppelen aan GitHub
 

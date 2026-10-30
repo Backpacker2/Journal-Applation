@@ -89,7 +89,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .update-box ul { margin: 0; padding-left: 16px; color: #b9bdf0; max-height: 120px; overflow-y: auto; }
 .update-box .warn { color: #e0a645; }
 .version { font-size: 10.5px; color: #5c6275; margin-top: 2px; }
-.sync-actions { display: flex; gap: 6px; margin-top: 4px; }
+.sync-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -222,3 +222,15 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
   .doc-row { grid-template-columns: 1fr 80px; }
   .doc-row .doc-date { display: none; }
 }
+
+/* ---------- sleutels ---------- */
+.space-item.locked { color: #8a90a3; font-style: italic; }
+.key-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.key-table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.key-table td { padding: 10px 6px; border-bottom: 1px solid var(--line); }
+.key-table tr:last-child td { border-bottom: 0; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.key-input { width: 100%; min-height: 64px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); resize: vertical; }
+.notice.ok { background: var(--green-soft); color: var(--green); }
+.notice.bad { background: rgba(226, 109, 109, 0.14); color: var(--red); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--card-2); padding: 1px 5px; border-radius: 4px; }

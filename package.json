@@ -1,6 +1,6 @@
 {
   "name": "leerjournaal",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Gedachten vastleggen per project of chat, versleuteld opslaan in GitHub en omzetten naar documenten.",
   "private": true,
   "main": "launcher.js",
