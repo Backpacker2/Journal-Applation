@@ -211,6 +211,7 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 ## 9. Veiligheid en privacy
 
 - De server luistert alleen op `127.0.0.1`: andere apparaten in je netwerk kunnen er niet bij.
+- Alleen de eigen pagina van de app mag de API gebruiken; andere websites in je browser worden geweigerd.
 - Elke gedachte wordt apart versleuteld met AES-256-GCM en een willekeurige IV. Aangepaste bestanden worden herkend.
 - **Versleuteld:** de inhoud van alles, en de namen van je projecten en chats (mappen heten een willekeurige code).
 - **Niet versleuteld:** of iets een project of chat is, de datum en tijd in bestandsnamen, en hoeveel bestanden er zijn.
@@ -235,3 +236,5 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 | Update wil niet | Je hebt app-bestanden aangepast: `git status` in de app-map, commit of herstel ze |
 | AI-knoppen geven een fout | Zet `anthropicApiKey` in `config.json`, of gebruik *Kopieer prompt* |
 | De app start niet | Staat Node.js erop? `node --version` moet 18 of hoger zijn |
+| *Er draait al een Leerjournaal* | Een oude versie draait nog. Sluit dat terminalvenster, of: `lsof -ti tcp:4173 \| xargs kill`. Vanaf versie 0.5.1 neemt een nieuwe versie het zelf over |
+| *Poort is bezet door een ander programma* | Zet in `config.json` een andere `port`, bijvoorbeeld `4174` |

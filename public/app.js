@@ -17,7 +17,8 @@ const state = {
 
 // ---------- helpers ----------
 async function api(method, url, body) {
-  const res = await fetch(url, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const headers = { 'x-leerjournaal': '1', ...(body ? { 'content-type': 'application/json' } : {}) };
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `Fout ${res.status}`);
   return json;

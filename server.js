@@ -11,8 +11,11 @@ const ai = require('./lib/ai');
 const { Updater } = require('./lib/updater');
 
 const cfg = loadConfig();
-const { ring, created: keyCreated, keyDir } = loadKeyring(cfg);
-const store = new Store(cfg.dataDir, ring);
+// Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
+// zodat een tweede kopie van de app nooit aan je data of sleutels komt.
+let ring, keyCreated, keyDir, store;
+let markReady;
+const ready = new Promise(r => (markReady = r));
 const git = new Git(cfg.dataDir);
 const updater = new Updater(cfg.appDir);
 
@@ -167,10 +170,24 @@ route('PUT', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id },
 
 route('POST', '/api/sync', async () => git.sync());
 
+// Een nieuwere versie van de app kan een oude, nog draaiende versie netjes laten stoppen.
+route('POST', '/api/shutdown', async () => {
+  console.log('\n  Een nieuwere Leerjournaal neemt het over. Deze stopt nu.\n');
+  setTimeout(() => process.exit(0), 200);
+  return { ok: true };
+});
+
 // ---------- server ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (!url.pathname.startsWith('/api/')) return serveStatic(req, res);
+  // Beveiliging: alleen de eigen pagina mag de API gebruiken. Andere websites kunnen deze header
+  // niet meesturen zonder toestemming, en de Host-check blokkeert DNS-rebinding.
+  const host = String(req.headers.host || '');
+  if (![`localhost:${cfg.port}`, `127.0.0.1:${cfg.port}`].includes(host) || req.headers['x-leerjournaal'] !== '1') {
+    return send(res, 403, { error: 'Niet toegestaan' });
+  }
+  await ready;
   for (const r of routes) {
     const m = r.method === req.method && url.pathname.match(r.re);
     if (!m) continue;
@@ -186,7 +203,58 @@ const server = http.createServer(async (req, res) => {
   send(res, 404, { error: 'Onbekende route' });
 });
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function claimPort() {
+  return new Promise((resolve, reject) => {
+    const onError = e => { server.off('listening', onListen); reject(e); };
+    const onListen = () => { server.off('error', onError); resolve(); };
+    server.once('error', onError);
+    server.once('listening', onListen);
+    server.listen(cfg.port, '127.0.0.1');
+  });
+}
+
+// De poort is bezet. Is het een (oudere) Leerjournaal? Dan vragen we die om te stoppen.
+async function handleBusyPort() {
+  const base = `http://127.0.0.1:${cfg.port}`;
+  const headers = { 'x-leerjournaal': '1' };
+  let status = null;
+  try {
+    const r = await fetch(`${base}/api/status`, { headers, signal: AbortSignal.timeout(2000) });
+    if (r.ok) status = await r.json();
+  } catch {}
+  if (!status) {
+    console.error(`\n  Poort ${cfg.port} is bezet door een ander programma.`);
+    console.error(`  Zet in config.json bijvoorbeeld  "port": ${cfg.port + 1}  en start opnieuw.\n`);
+    process.exit(1);
+  }
+  const which = status.version ? `versie ${status.version}` : 'een oudere versie';
+  try {
+    const r = await fetch(`${base}/api/shutdown`, { method: 'POST', headers, signal: AbortSignal.timeout(2000) });
+    if (r.ok) { console.log(`  Er draaide al een Leerjournaal (${which}); die is gestopt.`); return; }
+  } catch {}
+  console.error(`\n  Er draait al een Leerjournaal (${which}) op poort ${cfg.port}, en die kan niet zelf stoppen.`);
+  console.error('  Sluit het terminalvenster van die versie, of stop hem met:');
+  console.error(`\n      lsof -ti tcp:${cfg.port} | xargs kill\n`);
+  console.error('  Start daarna deze versie opnieuw.\n');
+  process.exit(1);
+}
+
 (async () => {
+  try {
+    await claimPort();
+  } catch (e) {
+    if (e.code !== 'EADDRINUSE') throw e;
+    await handleBusyPort();
+    for (let i = 0; ; i++) {
+      await sleep(500);
+      try { await claimPort(); break; } catch (err) { if (err.code !== 'EADDRINUSE' || i >= 10) throw err; }
+    }
+  }
+
+  ({ ring, created: keyCreated, keyDir } = loadKeyring(cfg));
+  store = new Store(cfg.dataDir, ring);
   await git.ensureRepo();
   const renamed = store.migrateFolderNames();
   if (renamed) {
@@ -196,13 +264,12 @@ const server = http.createServer(async (req, res) => {
   if (cfg.autoSyncMinutes > 0) {
     setInterval(() => git.sync().catch(e => console.warn('Auto-sync mislukt:', e.message)), cfg.autoSyncMinutes * 60e3);
   }
-  server.listen(cfg.port, '127.0.0.1', () => {
-    console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
-    console.log(`  Data:    ${cfg.dataDir}`);
-    console.log(`  Sleutel: ${cfg.keyFile}`);
-    if (ring.keys.length > 1) console.log(`  + ${ring.keys.length - 1} oude sleutel(s) om oudere bestanden te lezen`);
-    if (keyCreated) console.log('\n  ⚠  Er is een NIEUWE sleutel gemaakt. Maak er nu een back-up van (iCloud of wachtwoordmanager)!');
-    if (!cfg.anthropicApiKey) console.log('\n  ℹ  Geen API-sleutel ingesteld: AI-knoppen werken via "Kopieer prompt".');
-    console.log('');
-  });
+  markReady();
+  console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
+  console.log(`  Data:    ${cfg.dataDir}`);
+  console.log(`  Sleutel: ${cfg.keyFile}`);
+  if (ring.keys.length > 1) console.log(`  + ${ring.keys.length - 1} oude sleutel(s) om oudere bestanden te lezen`);
+  if (keyCreated) console.log('\n  ⚠  Er is een NIEUWE sleutel gemaakt. Maak er nu een back-up van (iCloud of wachtwoordmanager)!');
+  if (!cfg.anthropicApiKey) console.log('\n  ℹ  Geen API-sleutel ingesteld: AI-knoppen werken via "Kopieer prompt".');
+  console.log('');
 })().catch(e => { console.error('Starten mislukt:', e.message); process.exit(1); });
