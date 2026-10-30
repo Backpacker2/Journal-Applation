@@ -43,7 +43,7 @@ je hoeft nooit meer iets opnieuw te koppelen.
 1. Installeer Node.js 18 of nieuwer: `brew install node` (of via nodejs.org). Extra pakketten zijn niet nodig.
 2. Clone de app-repository naar een vaste plek:
    ```bash
-   git clone git@github.com:jouw-naam/Journal-Data.git ~/Leerjournaal
+   git clone https://github.com/Backpacker2/Journal-Applation.git ~/Leerjournaal
    cd ~/Leerjournaal
    ```
 3. Maak je instellingen: `cp config.example.json config.json` en pas ze aan (zie [hoofdstuk 3](#3-instellingen-configjson)).
@@ -52,6 +52,18 @@ je hoeft nooit meer iets opnieuw te koppelen.
 > **Eerste start:** staat er nog geen sleutel op de plek van `keyFile`, dan maakt de app een nieuwe.
 > **Maak daar meteen een back-up van** (bijvoorbeeld in je wachtwoordmanager). Zonder sleutel zijn je gedachten
 > voorgoed onleesbaar. Had je al een vorige versie? Lees dan eerst [hoofdstuk 5](#5-sleutels).
+
+**Heb je de app al in een map staan (bijvoorbeeld uit een zip)?** Koppel die map dan aan de repository,
+zonder iets opnieuw te installeren. Je `data/`, `config.json` en sleutels blijven staan:
+
+```bash
+cd pad/naar/je/leerjournaal-map
+git init -b main
+git remote add origin https://github.com/Backpacker2/Journal-Applation.git
+git fetch origin
+git reset --hard origin/main
+git branch -u origin/main
+```
 
 **Overstappen van een eerdere versie (zip)?**
 
@@ -152,14 +164,14 @@ Je gedachten gaan naar een **tweede, aparte** repository. Zo staan app-code en d
 
 | Repository | Wat erin staat | Wie wijzigt |
 |---|---|---|
-| `jouw-naam/Journal-Data` | de app-code | jij en Claude; updates via de knop |
-| `leerjournaal-data` (privé) | je versleutelde gedachten en documenten | alleen de app, via *Sync met GitHub* |
+| `Backpacker2/Journal-Applation` | de app-code | jij en Claude; updates via de knop |
+| `jouw-naam/Journal-Data` (privé) | je versleutelde gedachten en documenten | alleen de app, via *Sync met GitHub* |
 
-1. Maak op GitHub een **privé** repository aan, bijvoorbeeld `leerjournaal-data` (zonder README).
+1. Maak op GitHub een **privé** repository aan (zonder README). Bij jou is dat `jouw-naam/Journal-Data`.
 2. Koppel hem in de terminal:
    ```bash
    cd ~/Leerjournaal/data
-   git remote add origin git@github.com:Backpacker2/leerjournaal-data.git
+   git remote add origin https://github.com/jouw-naam/Journal-Data.git
    ```
 3. Klik in de app op **Sync met GitHub**. Wil je automatisch syncen, zet dan `autoSyncMinutes` in `config.json`.
 
@@ -176,11 +188,11 @@ nieuw is. Klik op **Nu bijwerken**: de app haalt de nieuwe code op, start zichze
 ## 8. Hoe de bestanden eruitzien
 
 ```
-~/Leerjournaal/                 app-code (repository jouw-naam/Journal-Data)
+~/Leerjournaal/                 app-code (repository Backpacker2/Journal-Applation)
   start.command                 app starten
   sleutels-zoeken.command       oude sleutels zoeken
   config.json                   jouw instellingen (niet in git)
-  data/                         je gedachten (aparte repository leerjournaal-data)
+  data/                         je gedachten (aparte repository jouw-naam/Journal-Data)
     projecten/5fe7b71a965b/              willekeurige code, geen naam
       ruimte.txt                         echte naam + template (versleuteld)
       gedachten/2026-10-30_13-02-15.txt  één gedachte of vraag (versleuteld)
