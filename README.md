@@ -177,6 +177,9 @@ verslag. Met *Standaardtemplate* zet je het origineel terug.
    datum en tijd om snel terug te kijken.
 4. Bovenaan kies je hoe je het bekijkt: **Preview** (opgemaakt), **md** (de Markdown-tekst) of **txt** (platte tekst).
 5. **Download** als `.md`, `.txt` of `.docx` (Word) met de knoppen bovenaan, of direct vanuit de lijst met documenten.
+6. **⇪ Document uploaden** zet je eigen bestanden erbij (Word, Markdown, tekst, pdf, afbeeldingen; max. 20 MB per stuk).
+   Het origineel wordt versleuteld bewaard in `bijlagen/` en is altijd terug te downloaden. Van Word-, Markdown- en
+   tekstbestanden toont de app ook de tekst, zodat je ze kunt lezen, doorzoeken en als nieuwe versie bewerken.
 
 De AI mag alleen jouw eigen gedachten en antwoorden ordenen en verwoorden. Lees de ruwe versie altijd even na.
 

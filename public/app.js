@@ -68,15 +68,21 @@ function fmtDateTime(iso) {
 // Downloadt een document als .md, .txt of .docx (de server maakt het bestand).
 async function downloadDoc(id, format, type, slug) {
   const root = type ? `/api/spaces/${type}/${slug}` : base();
-  const res = await fetch(`${root}/documents/${id}/export/${format}`, { headers: { 'x-leerjournaal': '1' } });
+  const url = format === 'file' ? `${root}/documents/${id}/file` : `${root}/documents/${id}/export/${format}`;
+  const res = await fetch(url, { headers: { 'x-leerjournaal': '1' } });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fout ${res.status}`);
-  const name = (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || `document.${format}`;
+  const cd = res.headers.get('content-disposition') || '';
+  const star = cd.match(/filename\*=UTF-8''([^;]+)/)?.[1];
+  const name = (star && decodeURIComponent(star)) || cd.match(/filename="([^"]+)"/)?.[1] || `document.${format}`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(await res.blob());
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const dlLinks = (id, type = '', slug = '') => `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>.${f}</button>`).join(' ')}</span>`;
+const kindLabel = k => (k === 'eind' ? 'Eindversie' : k === 'upload' ? 'Geüpload' : 'Ruwe versie');
+const dlLinks = (id, type = '', slug = '') => /_upload$/.test(id)
+  ? `<span class="dl-links">↓ <button class="link" data-action="dl" data-id="${id}" data-format="file"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>origineel</button></span>`
+  : `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>.${f}</button>`).join(' ')}</span>`;
 
 // Minimale Markdown-weergave (koppen, lijsten, vet, cursief, citaten, alinea's)
 function md(src) {
@@ -592,6 +598,8 @@ async function renderDocs() {
           ${feature('aiButtons') ? `<button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>` : ''}
           <button class="btn" data-action="copy-prompt">Kopieer prompt</button>
           <button class="btn ghost" data-action="paste-doc">Plak resultaat</button>
+          <span class="spacer-h"></span>
+          <label class="btn ghost upload-btn">⇪ Document uploaden<input type="file" id="doc-upload" multiple hidden></label>
         </div>
       </div>
       ${isProject ? sprintsPanel(sprints, todayKey) : ''}
@@ -600,17 +608,18 @@ async function renderDocs() {
         ${state.docs.length ? `<div class="doc-list">${docSeries(state.docs).map(([latest, versions]) => `
           <div class="doc-row">
             <button class="doc-title link-like" data-action="open-doc" data-id="${latest.id}">${esc(latest.title)}</button>
-            <span><span class="badge ${latest.kind}">${latest.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+            <span><span class="badge ${latest.kind}">${kindLabel(latest.kind)}</span></span>
             <span class="doc-date">${latest.createdAt ? fmtDateTime(latest.createdAt) : ''}${latest.from ? ` · ${latest.from.slice(5)} t/m ${(latest.to || '').slice(5)}` : ''}</span>
             ${dlLinks(latest.id)}
           </div>
           ${versions.length > 1 ? `<details class="doc-versions"${state.openSeries === latest.seriesId ? ' open' : ''} data-series="${latest.seriesId}"><summary>${versions.length} versies</summary>
             ${versions.map(v => `<div class="doc-row version">
               <button class="link-like" data-action="open-doc" data-id="${v.id}">Versie ${v.version}</button>
-              <span><span class="badge ${v.kind}">${v.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+              <span><span class="badge ${v.kind}">${kindLabel(v.kind)}</span></span>
               <span class="doc-date">${v.createdAt ? fmtDateTimeFull(v.createdAt) : ''}</span>${dlLinks(v.id)}</div>`).join('')}
           </details>` : ''}`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
       </div>`;
+    $('#doc-upload')?.addEventListener('change', e => uploadDocs(e.target.files).catch(fail));
     const sel = $('#doc-sprint');
     if (sel) sel.addEventListener('change', () => {
       const x = sprints.find(y => y.id === sel.value); if (!x) return;
@@ -678,7 +687,7 @@ function renderOpenDoc(inner) {
       <button class="btn ghost" data-action="close-doc">← Alle documenten</button>
       <div class="form-row">
         ${state.docEdit ? '' : `<div class="seg">${[['preview', 'Preview'], ['md', 'md'], ['txt', 'txt']].map(([f, l]) => `<button class="${state.docFormat === f ? 'on' : ''}" data-action="doc-format" data-format="${f}">${l}</button>`).join('')}</div>
-          <div class="dl-menu"><span class="hint">Download</span>${['md', 'txt', 'docx'].map(f => `<button class="btn small" data-action="dl" data-id="${d.id}" data-format="${f}">.${f}</button>`).join('')}</div>
+          <div class="dl-menu"><span class="hint">Download</span>${d.kind === 'upload' ? `<button class="btn small" data-action="dl" data-id="${d.id}" data-format="file">${esc(d.fileName || 'origineel')}</button>` : ''}${d.kind === 'upload' && !d.content ? '' : ['md', 'txt', 'docx'].map(f => `<button class="btn small" data-action="dl" data-id="${d.id}" data-format="${f}">.${f}</button>`).join('')}</div>
           <button class="btn" data-action="edit-doc">Bewerken</button>`}
       </div></div>`;
   if (state.docEdit) {
@@ -699,9 +708,10 @@ function renderOpenDoc(inner) {
   }
   inner.innerHTML = `${header}
     <div class="panel">
-      <div class="form-row" style="gap:8px"><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span>
+      <div class="form-row" style="gap:8px"><span class="badge ${d.kind}">${kindLabel(d.kind)}</span>
         <span class="hint">${fmtDateTimeFull(d.createdAt)} · ${esc(d.generatedBy || '')}${d.from ? ` · gedachten van ${d.from} t/m ${d.to}` : ''}</span></div>
       ${versionStrip(d)}
+      ${d.note ? `<div class="notice subtle">${esc(d.note)}</div>` : ''}
       ${state.docFormat === 'md' ? `<pre class="doc-raw">${esc(d.content)}</pre>`
         : state.docFormat === 'txt' ? '<pre class="doc-raw" id="doc-txt">Laden…</pre>'
         : `<div class="doc-view">${md(d.content)}</div>`}
@@ -712,12 +722,23 @@ function renderOpenDoc(inner) {
   }
 }
 
+// Bestanden uploaden (Word, Markdown, tekst, pdf, afbeeldingen…). Het origineel blijft bewaard.
+async function uploadDocs(files) {
+  const list = [...(files || [])]; if (!list.length) return;
+  for (const f of list) {
+    if (f.size > 20 * 1024 * 1024) { toast(`${f.name} is groter dan 20 MB`, true); continue; }
+    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = bad; r.readAsDataURL(f); });
+    await api('POST', `${base()}/documents/upload`, { name: f.name, mime: f.type, data });
+  }
+  toast(list.length === 1 ? `${list[0].name} geüpload` : `${list.length} bestanden geüpload`);
+  renderDocs();
+}
 // Alle versies van dit document met datum en tijd, zodat je snel een vorige versie opent.
 function versionStrip(d) {
   const info = (state.docs || []).find(x => x.id === d.id);
   const series = info ? (state.docs || []).filter(x => x.seriesId === info.seriesId) : [];
   if (series.length < 2) return '';
-  return `<div class="version-strip"><span class="hint">Versies:</span>${[...series].reverse().map(v => `<button class="vchip${v.id === d.id ? ' on' : ''}" data-action="open-doc" data-id="${v.id}" title="${v.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}">v${v.version} · ${fmtDateTime(v.createdAt)}</button>`).join('')}</div>`;
+  return `<div class="version-strip"><span class="hint">Versies:</span>${[...series].reverse().map(v => `<button class="vchip${v.id === d.id ? ' on' : ''}" data-action="open-doc" data-id="${v.id}" title="${kindLabel(v.kind)}">v${v.version} · ${fmtDateTime(v.createdAt)}</button>`).join('')}</div>`;
 }
 async function saveDoc(as) {
   const d = state.openDoc;
@@ -1127,7 +1148,7 @@ async function renderAllDocs() {
         <div class="doc-row all">
           <button class="doc-title link-like" data-action="open-hit" data-kind="document" data-type="${d.type}" data-slug="${esc(d.slug)}" data-id="${d.id}">${esc(d.title)}</button>
           <span class="doc-space">${esc(d.spaceName)}${d.archived ? ' · archief' : ''}</span>
-          <span><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+          <span><span class="badge ${d.kind}">${kindLabel(d.kind)}</span></span>
           <span class="doc-date">${d.createdAt ? fmtDateTime(d.createdAt) : ''}</span>
           ${dlLinks(d.id, d.type, d.slug)}
         </div>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}</div>`;

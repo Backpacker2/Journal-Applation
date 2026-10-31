@@ -13,6 +13,7 @@ const { markdownToDocx, markdownToText } = require('./lib/docx');
 const { GitHubAuth } = require('./lib/github');
 const { makeAdapter } = require('./lib/connectors');
 const boardSync = require('./lib/sync');
+const { extractText } = require('./lib/extract');
 
 const cfg = loadConfig();
 // Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
@@ -40,7 +41,8 @@ function send(res, status, body) {
   if (body && body.__file) {
     res.writeHead(status, {
       'content-type': body.type, 'cache-control': 'no-store',
-      'content-disposition': `attachment; filename="${body.name.replace(/"/g, '')}"`
+      // ASCII-naam voor oude programma's, plus de echte naam (met accenten) volgens RFC 5987.
+      'content-disposition': `attachment; filename="${body.name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(body.name)}`
     });
     return res.end(body.body);
   }
@@ -51,7 +53,7 @@ function send(res, status, body) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', c => { data += c; if (data.length > 5e6) { reject(Object.assign(new Error('Te groot'), { status: 413 })); req.destroy(); } });
+    req.on('data', c => { data += c; if (data.length > 30e6) { reject(Object.assign(new Error('Te groot'), { status: 413 })); req.destroy(); } });
     req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(Object.assign(new Error('Ongeldige JSON'), { status: 400 })); } });
   });
 }
@@ -210,6 +212,22 @@ route('GET', '/api/spaces/:type/:slug/documents/:id/export/:format', async ({ ty
   if (format === 'txt') return file(`${name}.txt`, 'text/plain; charset=utf-8', markdownToText(doc.content));
   if (format === 'docx') return file(`${name}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', markdownToDocx(doc.content, doc.title));
   throw Object.assign(new Error('Onbekend formaat'), { status: 400 });
+});
+
+// Bestand uploaden (base64 in JSON). Origineel blijft bewaard; de tekst wordt leesbaar en doorzoekbaar.
+route('POST', '/api/spaces/:type/:slug/documents/upload', async ({ type, slug }, body) => {
+  const data = String(body.data || '');
+  if (!data || !/^[A-Za-z0-9+/=\s]+$/.test(data)) throw Object.assign(new Error('Geen bestand ontvangen.'), { status: 400 });
+  const buf = Buffer.from(data, 'base64');
+  if (buf.length > 20 * 1024 * 1024) throw Object.assign(new Error('Dit bestand is groter dan 20 MB.'), { status: 413 });
+  const { text, note } = extractText(body.name || '', buf);
+  const doc = store.saveUpload(type, slug, { name: body.name, mime: body.mime, data: buf.toString('base64'), title: body.title, text, note });
+  await git.commit(`Bestand geüpload: ${type}/${slug}`);
+  return doc;
+});
+route('GET', '/api/spaces/:type/:slug/documents/:id/file', async ({ type, slug, id }) => {
+  const f = store.getUploadFile(type, slug, id);
+  return file(f.fileName, f.mime, f.body);
 });
 
 route('POST', '/api/spaces/:type/:slug/documents', async ({ type, slug }, body) => {
