@@ -120,15 +120,35 @@ datums vanzelf ingevuld. In de tijdlijn zie je waar een sprint begint.
 
 **Kanban (projecten).** Tabblad *Kanban* met de kolommen Backlog, Mee bezig, Waiting for review en Done. Typ een
 kaart onderaan een kolom en druk op Enter. Sleep kaarten tussen kolommen, of klik op een kaart om titel, beschrijving en
-kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`). Koppelen met Trello of Jira volgt later.
+kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`).
+
+**Kanban koppelen met Trello of Jira.** Per project kun je het bord koppelen, bijvoorbeeld het groepsproject aan Jira
+en je persoonlijke project aan Trello.
+1. Stel eenmalig je account in: *Instellingen → Koppelingen*.
+   - **Trello**: maak op [trello.com/power-ups/admin](https://trello.com/power-ups/admin) een Power-Up (naam maakt niet
+     uit) en kopieer onder *API key* de sleutel. Plak die in de app, klik **Token ophalen**, kies *Allow* en plak het token.
+   - **Jira**: maak een API-token op [id.atlassian.com → API-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+     (*Create API token*, zonder scopes). Vul de site in (`jouwteam.atlassian.net`), je e-mailadres en het token.
+   - Klik **Opslaan en testen**. De gegevens staan versleuteld in `data/koppelingen.txt`.
+2. Open in het project het tabblad *Kanban* en kies **Koppelen met Trello** of **Koppelen met Jira**. Kies het bord of
+   project. Heb je al kaarten, vink dan aan of die ook naar Trello/Jira moeten; anders blijven ze alleen hier (label *alleen hier*).
+3. De kolommen worden die van Trello/Jira. Bij het openen van het tabblad en met **↻ Verversen** haalt de app de laatste
+   stand op. Wat je hier toevoegt, wijzigt of verplaatst, gaat meteen terug.
+4. **Conflicten.** Is dezelfde titel, beschrijving of kolom hier én daar veranderd, dan overschrijft de app niets. Bovenaan
+   verschijnt *Kies welke versie blijft*: **Mijn versie houden** of **Deze versie nemen**.
+5. **Jira-regels.** Laat de workflow van je team een stap niet toe (bijvoorbeeld direct van To Do naar Done), dan zegt de
+   app dat en blijft de kaart staan waar hij in Jira staat. Issues verwijderen doe je in Jira zelf; een Trello-kaart wordt
+   gearchiveerd. Jira-issues die al langer dan 30 dagen klaar zijn, worden niet meer opgehaald.
+6. **Ontkoppelen** houdt alle kaarten hier; ze worden alleen niet meer bijgewerkt.
 
 **Feedback (projecten).** Tabblad *Feedback*: leg feedback vast (titel, van wie, datum, de feedback zelf), beantwoord de
 vragen die erin stonden, schrijf op wat je ervan leerde en koppel het aan documenten of kaarten. Feedback uit de gekozen
 periode gaat mee naar het document; de AI gebruikt de feedback zelf alleen als context, jouw antwoorden en lessen als inhoud.
 
 **Instellingen.** Linksonder *Instellingen*: kies een **thema** (Donker, Licht, Nacht, Sepia, Bos, Oceaan), zet
-**functies** aan of uit (Kanban, Feedback, AI-knoppen), stel **automatisch uploaden** en het interval in, en vul je
-**API-sleutel** en model in. Alles wordt bewaard in `instellingen.json` op je eigen computer (staat in `.gitignore`).
+**functies** aan of uit (Kanban, Feedback, AI-knoppen), stel **automatisch uploaden** en het interval in, kies of
+gegenereerde documenten **datums** bevatten (geen, alleen de dag, of dag en tijd; tijden staan er standaard niet in),
+stel je Trello- en Jira-accounts in en vul je **API-sleutel** en model in. Alles wordt bewaard in `instellingen.json` op je eigen computer (staat in `.gitignore`).
 
 **Templatebibliotheek.** In het tabblad *Template*: **Opslaan in bibliotheek…** bewaart het template zodat je het in
 andere projecten en chats kunt gebruiken. In de bibliotheek kies je **Gebruiken**, en daarna **Opslaan**. Je eigen
@@ -266,6 +286,8 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 - **Versleuteld:** de inhoud van alles, en de namen van je projecten en chats (mappen heten een willekeurige code).
 - **Niet versleuteld:** of iets een project of chat is, de datum en tijd in bestandsnamen, en hoeveel bestanden er zijn.
 - Bij de AI-knoppen gaat de tekst van die ruimte naar de Anthropic API. Met "Kopieer prompt" regel je dat zelf.
+- Bij een gekoppeld Kanbanbord gaan alleen de kaarten (titel, beschrijving, kolom) naar Trello/Jira, nooit je gedachten.
+  Je Trello- en Jira-tokens staan versleuteld in `data/koppelingen.txt`.
 
 ## 10. Commando's
 

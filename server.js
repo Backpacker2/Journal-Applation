@@ -11,6 +11,8 @@ const ai = require('./lib/ai');
 const { Updater } = require('./lib/updater');
 const { markdownToDocx, markdownToText } = require('./lib/docx');
 const { GitHubAuth } = require('./lib/github');
+const { makeAdapter } = require('./lib/connectors');
+const boardSync = require('./lib/sync');
 
 const cfg = loadConfig();
 // Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
@@ -184,12 +186,12 @@ route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }) => 
 });
 
 route('POST', '/api/spaces/:type/:slug/prompt', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : []);
+  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : [], cfg.docDates);
   return { prompt: `${p.system}\n\n---\n\n${p.user}`, count: p.count };
 });
 
 route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : []);
+  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : [], cfg.docDates);
   if (!p.count) throw Object.assign(new Error('Er zijn geen gedachten in deze periode.'), { status: 400 });
   const content = await ai.callClaude(cfg, p, 8000);
   const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: cfg.model });
@@ -223,15 +225,120 @@ route('PUT', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id },
 });
 
 // ---------- kanban ----------
+// Bordacties per project na elkaar uitvoeren, zodat verversen en bewerken elkaar niet overschrijven.
+const boardLocks = new Map();
+function withBoard(type, slug, fn) {
+  const k = `${type}/${slug}`;
+  const p = (boardLocks.get(k) || Promise.resolve()).then(fn, fn);
+  boardLocks.set(k, p.catch(() => {}));
+  return p;
+}
+function adapterFor(board) {
+  const creds = store.getConnections()[board.link.kind];
+  if (!creds) throw Object.assign(new Error(`Er is nog geen ${board.link.kind === 'jira' ? 'Jira' : 'Trello'}-account ingesteld (Instellingen → Koppelingen).`), { status: 400 });
+  return makeAdapter(board.link.kind, creds);
+}
+// Na een lokale wijziging op een gekoppeld bord: die kaart meteen naar Trello/Jira sturen.
+async function pushCard(type, slug, cardId) {
+  const b = store.getBoard(type, slug);
+  if (!b.link) return { board: b, summary: null };
+  const summary = await boardSync.push(b, adapterFor(b), undefined, cardId);
+  store.saveBoard(type, slug, b);
+  return { board: b, summary };
+}
+
 route('GET', '/api/spaces/:type/:slug/board', async ({ type, slug }) => store.getBoard(type, slug));
-route('POST', '/api/spaces/:type/:slug/board/cards', async ({ type, slug }, body) => {
-  const c = store.addCard(type, slug, body); await git.commit(`Kaart toegevoegd: ${type}/${slug}`); return c;
-});
-route('PUT', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }, body) => {
-  const c = store.updateCard(type, slug, id, body); await git.commit(`Kaart bijgewerkt: ${type}/${slug}`); return c;
-});
-route('DELETE', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }) => {
+route('POST', '/api/spaces/:type/:slug/board/cards', async ({ type, slug }, body) => withBoard(type, slug, async () => {
+  const c = store.addCard(type, slug, body);
+  const r = await pushCard(type, slug, c.id).catch(e => ({ error: e.message }));
+  await git.commit(`Kaart toegevoegd: ${type}/${slug}`);
+  return { card: c, ...r };
+}));
+route('PUT', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }, body) => withBoard(type, slug, async () => {
+  const c = store.updateCard(type, slug, id, body);
+  const r = await pushCard(type, slug, c.id).catch(e => ({ error: e.message }));
+  await git.commit(`Kaart bijgewerkt: ${type}/${slug}`);
+  return { card: c, ...r };
+}));
+route('DELETE', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }) => withBoard(type, slug, async () => {
+  const b = store.getBoard(type, slug);
+  const card = b.cards.find(c => c.id === id);
+  if (b.link && card?.remote) await adapterFor(b).archiveCard(b.link.target, card.remote.id); // Trello: archiveren; Jira: weigert
   const r = store.deleteCard(type, slug, id); await git.commit(`Kaart verwijderd: ${type}/${slug}`); return r;
+}));
+
+// Koppelen, verversen, conflicten
+route('POST', '/api/spaces/:type/:slug/board/link', async ({ type, slug }, body) => withBoard(type, slug, async () => {
+  const kind = body.kind === 'jira' ? 'jira' : 'trello';
+  const creds = store.getConnections()[kind];
+  if (!creds) throw Object.assign(new Error(`Stel eerst je ${kind === 'jira' ? 'Jira' : 'Trello'}-account in (Instellingen → Koppelingen).`), { status: 400 });
+  const adapter = makeAdapter(kind, creds);
+  const target = (await adapter.listTargets()).find(t => t.id === body.targetId);
+  if (!target) throw Object.assign(new Error('Dat bord of project is niet gevonden.'), { status: 404 });
+  const b = boardSync.link(store.getBoard(type, slug), kind, target, !!body.sendExisting);
+  const summary = await boardSync.refresh(b, adapter);
+  store.saveBoard(type, slug, b);
+  await git.commit(`Kanban gekoppeld: ${type}/${slug}`);
+  return { board: b, summary };
+}));
+route('DELETE', '/api/spaces/:type/:slug/board/link', async ({ type, slug }) => withBoard(type, slug, async () => {
+  const b = boardSync.unlink(store.getBoard(type, slug));
+  store.saveBoard(type, slug, b); await git.commit(`Kanban ontkoppeld: ${type}/${slug}`);
+  return { board: b };
+}));
+route('POST', '/api/spaces/:type/:slug/board/refresh', async ({ type, slug }) => withBoard(type, slug, async () => {
+  const b = store.getBoard(type, slug);
+  if (!b.link) return { board: b, summary: null };
+  try {
+    const summary = await boardSync.refresh(b, adapterFor(b));
+    store.saveBoard(type, slug, b); await git.commit(`Kanban ververst: ${type}/${slug}`);
+    return { board: b, summary };
+  } catch (e) {
+    b.link.lastError = e.message; store.saveBoard(type, slug, b);
+    throw e;
+  }
+}));
+route('POST', '/api/spaces/:type/:slug/board/conflicts', async ({ type, slug }, body) => withBoard(type, slug, async () => {
+  const b = store.getBoard(type, slug);
+  const card = boardSync.resolve(b, body.cardId, body.field, body.choice === 'theirs' ? 'theirs' : 'mine');
+  store.saveBoard(type, slug, b);
+  const r = card ? await pushCard(type, slug, card.id).catch(e => ({ error: e.message })) : {};
+  await git.commit(`Kanban-conflict opgelost: ${type}/${slug}`);
+  return { board: store.getBoard(type, slug), ...r };
+}));
+
+// ---------- koppelingen (accounts) ----------
+route('GET', '/api/connections', async () => {
+  const c = store.getConnections();
+  return {
+    trello: c.trello ? { configured: true, name: c.trello.name } : { configured: false },
+    jira: c.jira ? { configured: true, name: c.jira.name, site: c.jira.site, email: c.jira.email } : { configured: false }
+  };
+});
+route('PUT', '/api/connections/:kind', async ({ kind }, body) => {
+  const str = v => String(v || '').trim();
+  let creds;
+  if (kind === 'trello') {
+    creds = { key: str(body.key), token: str(body.token) };
+    if (!creds.key || !creds.token) throw Object.assign(new Error('Vul de API-sleutel en het token in.'), { status: 400 });
+  } else if (kind === 'jira') {
+    creds = { site: str(body.site).replace(/^https?:\/\//, '').replace(/\/.*$/, ''), email: str(body.email), token: str(body.token) };
+    if (/^http:\/\/(127\.0\.0\.1|localhost)/.test(str(body.site))) creds.site = str(body.site); // alleen voor tests
+    if (!creds.site || !creds.email || !creds.token) throw Object.assign(new Error('Vul de site, je e-mail en het API-token in.'), { status: 400 });
+  } else throw Object.assign(new Error('Onbekende koppeling'), { status: 400 });
+  creds.name = await makeAdapter(kind, creds).whoami(); // test meteen of het werkt
+  const all = store.getConnections(); all[kind] = creds; store.saveConnections(all);
+  await git.commit('Koppeling bijgewerkt');
+  return { configured: true, name: creds.name };
+});
+route('DELETE', '/api/connections/:kind', async ({ kind }) => {
+  const all = store.getConnections(); delete all[kind]; store.saveConnections(all);
+  await git.commit('Koppeling verwijderd'); return { configured: false };
+});
+route('GET', '/api/connections/:kind/targets', async ({ kind }) => {
+  const creds = store.getConnections()[kind];
+  if (!creds) throw Object.assign(new Error('Nog geen account ingesteld.'), { status: 400 });
+  return makeAdapter(kind, creds).listTargets();
 });
 
 // ---------- feedback ----------
@@ -252,7 +359,7 @@ route('POST', '/api/sync', async () => git.sync());
 const THEMES = ['dark', 'light', 'night', 'sepia', 'forest', 'ocean'];
 const publicSettings = () => ({
   theme: cfg.theme, features: cfg.features, autoSync: !!cfg.autoSync, autoSyncMinutes: cfg.autoSyncMinutes,
-  model: cfg.model, hasApiKey: !!cfg.anthropicApiKey, themes: THEMES
+  model: cfg.model, hasApiKey: !!cfg.anthropicApiKey, themes: THEMES, docDates: cfg.docDates || 'dag'
 });
 route('GET', '/api/settings', async () => publicSettings());
 route('PUT', '/api/settings', async (p, body) => {
@@ -266,6 +373,7 @@ route('PUT', '/api/settings', async (p, body) => {
   if (Number.isFinite(body.autoSyncMinutes)) patch.autoSyncMinutes = Math.max(0, Math.min(1440, Math.round(body.autoSyncMinutes)));
   if (typeof body.model === 'string' && /^[\w.:-]{3,80}$/.test(body.model.trim())) patch.model = body.model.trim();
   if (typeof body.anthropicApiKey === 'string') patch.anthropicApiKey = body.anthropicApiKey.trim();
+  if (['geen', 'dag', 'dag-tijd'].includes(body.docDates)) patch.docDates = body.docDates;
   saveUiSettings(patch);
   Object.assign(cfg, patch);
   applySyncSettings();

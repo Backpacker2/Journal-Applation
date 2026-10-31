@@ -243,7 +243,24 @@ $('#main').addEventListener('click', async e => {
     if (a === 'dl') await downloadDoc(t.dataset.id, t.dataset.format, t.dataset.type, t.dataset.slug);
     if (a === 'open-hit') return openHit(t.dataset);
     if (a === 'card-add') return addCard(t.dataset.column);
-    if (a === 'card-edit') { state.cardEdit = t.dataset.id; return drawBoard(); }
+    if (a === 'card-edit') { if (e.target.closest('[data-stop]')) return; state.cardEdit = t.dataset.id; return drawBoard(); }
+    if (a === 'board-refresh') return refreshBoard();
+    if (a === 'board-unlink') {
+      if (!confirm(`Ontkoppelen van ${svcName(state.board.link.kind)}? De kaarten blijven hier staan, maar worden niet meer bijgewerkt.`)) return;
+      applyBoardResult(await api('DELETE', `${base()}/board/link`)); return drawBoard();
+    }
+    if (a === 'link-start') { state.linking = t.dataset.kind; drawBoard(); return drawLinkPanel(t.dataset.kind); }
+    if (a === 'link-cancel') { state.linking = null; return drawBoard(); }
+    if (a === 'goto-connections') { state.linking = null; await openSettings(); return $('#connections')?.scrollIntoView({ behavior: 'smooth' }); }
+    if (a === 'link-do') {
+      t.disabled = true; t.textContent = 'Koppelen…';
+      try {
+        const r = await api('POST', `${base()}/board/link`, { kind: t.dataset.kind, targetId: $('#link-target').value, sendExisting: !!$('#link-send')?.checked });
+        state.linking = null; applyBoardResult(r); drawBoard(); toast(`Gekoppeld: ${r.summary.added} kaarten opgehaald`);
+      } catch (err) { t.disabled = false; t.textContent = 'Koppelen'; throw err; }
+      return;
+    }
+    if (a === 'conflict') { applyBoardResult(await api('POST', `${base()}/board/conflicts`, { cardId: t.dataset.card, field: t.dataset.field, choice: t.dataset.choice })); return drawBoard(); }
     if (a === 'card-cancel') { state.cardEdit = null; return drawBoard(); }
     if (a === 'card-save') return saveCard(t.dataset.id);
     if (a === 'card-del') return deleteCard(t.dataset.id);
@@ -724,14 +741,74 @@ async function drawTemplateLibrary() {
 // ---------- kanban ----------
 async function renderBoard() {
   $('#view').outerHTML = `<div id="view" class="page"><div class="board-wrap" id="board"><div class="hint">Laden…</div></div></div>`;
-  try { state.board = await api('GET', `${base()}/board`); drawBoard(); } catch (e) { fail(e); }
+  try {
+    state.board = await api('GET', `${base()}/board`); drawBoard();
+    if (state.board.link) refreshBoard(true); // bij openen meteen de laatste stand ophalen
+  } catch (e) { fail(e); }
+}
+const svcName = k => (k === 'jira' ? 'Jira' : 'Trello');
+// Verwerkt het antwoord van een kaart-actie: nieuw bord, en meldingen van Trello/Jira.
+function applyBoardResult(r) {
+  if (r?.board) state.board = r.board;
+  const errs = [...(r?.summary?.errors || []), ...(r?.error ? [r.error] : [])];
+  if (errs.length) toast(errs.join(' '), true);
+  else if (r?.summary?.conflicts) toast('Iemand heeft dit intussen ook aangepast. Kies hieronder welke versie blijft.', true);
+}
+async function refreshBoard(quiet = false) {
+  const btn = $('#board-refresh'); if (btn) { btn.disabled = true; btn.textContent = 'Verversen…'; }
+  try {
+    const r = await api('POST', `${base()}/board/refresh`);
+    applyBoardResult(r); drawBoard();
+    const s = r.summary;
+    if (!quiet && s) toast(`Ververst: ${s.added} nieuw, ${s.pulled} bijgewerkt, ${s.pushed + s.created} verstuurd${s.removed ? `, ${s.removed} weg` : ''}${s.conflicts ? `, ${s.conflicts} conflict(en)` : ''}`);
+  } catch (e) { if (!quiet) fail(e); state.board = await api('GET', `${base()}/board`).catch(() => state.board); drawBoard(); }
+}
+function linkBar(b) {
+  if (!b.link) return `<div class="link-bar">
+      <span>Dit bord is alleen lokaal.</span><span class="spacer-h"></span>
+      <button class="btn small" data-action="link-start" data-kind="trello">Koppelen met Trello</button>
+      <button class="btn small" data-action="link-start" data-kind="jira">Koppelen met Jira</button></div>
+    ${state.linking ? '<div class="panel" id="link-panel"><div class="hint">Laden…</div></div>' : ''}`;
+  const l = b.link;
+  return `<div class="link-bar linked">
+      <span class="svc ${l.kind}">${svcName(l.kind)}</span><b>${esc(l.target.name)}</b>
+      <span class="hint">${l.lastRefresh ? `ververst om ${new Date(l.lastRefresh).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : 'nog niet ververst'}</span>
+      <span class="spacer-h"></span>
+      <button class="btn small primary" id="board-refresh" data-action="board-refresh">↻ Verversen</button>
+      <button class="btn small ghost" data-action="board-unlink">Ontkoppelen</button></div>
+    ${l.lastError ? `<div class="notice bad">${esc(l.lastError)}</div>` : ''}
+    ${(b.conflicts || []).length ? `<div class="panel conflicts"><h2>Kies welke versie blijft</h2>
+      <div class="sub">Deze kaarten zijn hier én in ${svcName(l.kind)} aangepast.</div>
+      ${b.conflicts.map(c => { const card = b.cards.find(x => x.id === c.cardId); const fld = { title: 'Titel', description: 'Beschrijving', column: 'Kolom' }[c.field];
+        const show = v => c.field === 'column' ? esc(b.columns.find(x => x.id === v)?.name || v) : esc(v || '(leeg)');
+        return `<div class="conflict"><div><b>${esc(card?.title || '')}</b> · ${fld}</div>
+          <div class="conflict-grid"><div><span class="lbl">Hier</span><div class="text">${show(c.local)}</div><button class="btn small" data-action="conflict" data-card="${c.cardId}" data-field="${c.field}" data-choice="mine">Mijn versie houden</button></div>
+          <div><span class="lbl">${svcName(l.kind)}</span><div class="text">${show(c.remote)}</div><button class="btn small" data-action="conflict" data-card="${c.cardId}" data-field="${c.field}" data-choice="theirs">Deze versie nemen</button></div></div></div>`; }).join('')}
+    </div>` : ''}`;
+}
+async function drawLinkPanel(kind) {
+  const el = $('#link-panel'); if (!el) return;
+  try {
+    const conns = await api('GET', '/api/connections');
+    if (!conns[kind].configured) {
+      el.innerHTML = `<h2>Koppelen met ${svcName(kind)}</h2><div class="sub">Stel eerst je ${svcName(kind)}-account in.</div>
+        <div class="row-end"><button class="btn ghost" data-action="link-cancel">Annuleer</button><button class="btn primary" data-action="goto-connections">Naar Instellingen → Koppelingen</button></div>`;
+      return;
+    }
+    const targets = await api('GET', `/api/connections/${kind}/targets`);
+    const n = state.board.cards.length;
+    el.innerHTML = `<h2>Koppelen met ${svcName(kind)}</h2>
+      <div class="sub">Ingelogd als ${esc(conns[kind].name)}. De kolommen van het bord worden overgenomen.</div>
+      <label class="field grow">${kind === 'jira' ? 'Project' : 'Bord'}<select id="link-target">${targets.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label>
+      ${n ? `<label class="check"><input type="checkbox" id="link-send"> Mijn ${n} huidige ${n === 1 ? 'kaart' : 'kaarten'} ook in ${svcName(kind)} zetten <span class="hint">(anders blijven ze alleen hier)</span></label>` : ''}
+      <div class="row-end"><button class="btn ghost" data-action="link-cancel">Annuleer</button><button class="btn primary" data-action="link-do" data-kind="${kind}">Koppelen</button></div>`;
+  } catch (e) { el.innerHTML = `<div class="notice bad">${esc(e.message)}</div><div class="row-end"><button class="btn ghost" data-action="link-cancel">Sluiten</button></div>`; }
 }
 
 function drawBoard() {
   const b = state.board, el = $('#board'); if (!b || !el) return;
   const colOpts = cur => b.columns.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
-  el.innerHTML = `
-    <div class="notice subtle">Lokaal bord, versleuteld opgeslagen. Koppelen met Trello of Jira volgt zodra je hebt gekozen welke je groepsproject gebruikt (issue #5).</div>
+  el.innerHTML = `${linkBar(b)}
     <div class="board">${b.columns.map(col => {
       const cards = b.cards.filter(c => c.column === col.id);
       return `<section class="col" data-col="${col.id}">
@@ -742,12 +819,18 @@ function drawBoard() {
               <input class="k-title" id="kt-${c.id}" value="${esc(c.title)}">
               <textarea class="k-desc" id="kd-${c.id}" placeholder="Beschrijving (optioneel)">${esc(c.description || '')}</textarea>
               <label class="field">Kolom<select id="kc-${c.id}">${colOpts(c.column)}</select></label>
-              <div class="row-end"><button class="link danger" data-action="card-del" data-id="${c.id}">Verwijder</button><span class="spacer-h"></span>
+              ${b.link && c.localOnly ? `<label class="check"><input type="checkbox" id="ks-${c.id}"> Ook in ${svcName(b.link.kind)} zetten</label>` : ''}
+              <div class="row-end">${b.link?.kind === 'jira' && c.remote ? '<span class="hint">Verwijderen doe je in Jira zelf</span>' : `<button class="link danger" data-action="card-del" data-id="${c.id}">${c.remote ? 'Archiveren in Trello' : 'Verwijder'}</button>`}<span class="spacer-h"></span>
                 <button class="btn small ghost" data-action="card-cancel">Annuleer</button><button class="btn small primary" data-action="card-save" data-id="${c.id}">Opslaan</button></div>
             </div>` : `
             <div class="kcard" draggable="true" data-card="${c.id}" data-action="card-edit" data-id="${c.id}">
               <div class="k-title-view">${esc(c.title)}</div>
               ${c.description ? `<div class="k-desc-view">${esc(c.description)}</div>` : ''}
+              ${c.remote || c.localOnly || c.remoteGone || (b.conflicts || []).some(x => x.cardId === c.id) ? `<div class="k-meta">
+                ${c.remote ? `<a class="k-key" href="${esc(c.remote.url || '#')}" target="_blank" rel="noopener" data-stop="1">${esc(c.remote.key || svcName(b.link?.kind))} ↗</a>` : ''}
+                ${c.localOnly && b.link ? '<span class="k-badge">alleen hier</span>' : ''}
+                ${c.remoteGone ? `<span class="k-badge warn">niet meer in ${esc(c.remoteGone.kind)}</span>` : ''}
+                ${(b.conflicts || []).some(x => x.cardId === c.id) ? '<span class="k-badge warn">conflict</span>' : ''}</div>` : ''}
             </div>`).join('')}
         </div>
         <div class="col-add"><input placeholder="+ Kaart toevoegen" data-add="${col.id}"><button class="btn small" data-action="card-add" data-column="${col.id}">Voeg toe</button></div>
@@ -777,19 +860,22 @@ function drawBoard() {
 async function addCard(column) {
   const inp = $(`[data-add="${column}"]`); const title = inp.value.trim();
   if (!title) return inp.focus();
-  const card = await api('POST', `${base()}/board/cards`, { title, column });
-  state.board.cards.push(card); drawBoard(); $(`[data-add="${column}"]`).focus();
+  const r = await api('POST', `${base()}/board/cards`, { title, column });
+  if (r.board) applyBoardResult(r); else { state.board.cards.push(r.card); applyBoardResult(r); }
+  drawBoard(); $(`[data-add="${column}"]`).focus();
 }
 async function moveCard(id, column, order) {
-  await api('PUT', `${base()}/board/cards/${id}`, { column, order });
-  state.board = await api('GET', `${base()}/board`); drawBoard();
+  const r = await api('PUT', `${base()}/board/cards/${id}`, { column, order });
+  applyBoardResult(r); state.board = await api('GET', `${base()}/board`); drawBoard();
 }
 async function saveCard(id) {
-  await api('PUT', `${base()}/board/cards/${id}`, { title: $('#kt-' + id).value, description: $('#kd-' + id).value, column: $('#kc-' + id).value });
-  state.cardEdit = null; state.board = await api('GET', `${base()}/board`); drawBoard(); toast('Kaart opgeslagen');
+  const r = await api('PUT', `${base()}/board/cards/${id}`, { title: $('#kt-' + id).value, description: $('#kd-' + id).value, column: $('#kc-' + id).value, ...($('#ks-' + id)?.checked ? { send: true } : {}) });
+  state.cardEdit = null; applyBoardResult(r); state.board = await api('GET', `${base()}/board`); drawBoard();
+  if (!r.error && !r.summary?.errors?.length && !r.summary?.conflicts) toast('Kaart opgeslagen');
 }
 async function deleteCard(id) {
-  if (!confirm('Deze kaart verwijderen?')) return;
+  const c = state.board.cards.find(x => x.id === id);
+  if (!confirm(c?.remote ? 'Deze kaart archiveren in Trello en hier weghalen?' : 'Deze kaart verwijderen?')) return;
   await api('DELETE', `${base()}/board/cards/${id}`);
   state.cardEdit = null; state.board.cards = state.board.cards.filter(c => c.id !== id); drawBoard();
 }
@@ -1110,6 +1196,18 @@ async function openSettings() {
         <label class="toggle-row"><input type="checkbox" id="set-autosync" ${st.autoSync ? 'checked' : ''}><div><b>Automatisch uploaden</b><span>Elke wijziging gaat binnen een paar seconden naar GitHub.</span></div></label>
         <label class="toggle-row"><span style="flex:1"><b style="color:var(--ink)">Elke zoveel minuten ophalen en uploaden</b>0 = uit. Handig als je ook op een ander apparaat schrijft.</span><input type="number" min="0" max="1440" class="inline-num" id="set-interval" value="${st.autoSyncMinutes ?? 10}"></label>
       </div>
+      <div class="panel" id="connections"><h2>Koppelingen (Kanban)</h2>
+        <div class="sub">Per project koppel je het Kanbanbord aan een Trello-bord of een Jira-project (tabblad Kanban). Hier stel je de accounts in. De gegevens worden versleuteld opgeslagen.</div>
+        <div id="conn-list"><div class="hint">Laden…</div></div>
+      </div>
+      <div class="panel"><h2>Documenten</h2>
+        <label class="toggle-row"><span style="flex:1"><b style="color:var(--ink)">Datums in gegenereerde documenten</b>Tijden van berichten komen er standaard niet in.</span>
+          <select id="set-docdates" class="inline-select">
+            <option value="geen" ${st.docDates === 'geen' ? 'selected' : ''}>Geen datums</option>
+            <option value="dag" ${(st.docDates || 'dag') === 'dag' ? 'selected' : ''}>Alleen de dag</option>
+            <option value="dag-tijd" ${st.docDates === 'dag-tijd' ? 'selected' : ''}>Dag en tijd</option>
+          </select></label>
+      </div>
       <div class="panel"><h2>AI</h2>
         <div class="sub">${st.hasApiKey ? '✓ Er is een Anthropic API-sleutel ingesteld.' : 'Geen API-sleutel ingesteld: de AI-knoppen werken via Kopieer prompt.'} De sleutel blijft op deze computer.</div>
         <div class="form-row">
@@ -1127,7 +1225,9 @@ async function openSettings() {
   main.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => saveSettings({ theme: b.dataset.setTheme }, true)));
   main.querySelectorAll('[data-feature]').forEach(c => c.addEventListener('change', () => saveSettings({ features: { [c.dataset.feature]: c.checked } })));
   $('#set-autosync').addEventListener('change', e => saveSettings({ autoSync: e.target.checked }));
+  $('#set-docdates').addEventListener('change', e => saveSettings({ docDates: e.target.value }));
   $('#gh-manage').addEventListener('click', openGitHubLogin);
+  drawConnections();
   api('GET', '/api/github').then(g => { const el = $('#gh-line'); if (el) el.textContent = g.loggedIn ? `Ingelogd als ${g.login}.` : 'Niet ingelogd in de app; uploaden gebruikt dan de inlog van je computer (als die er is).'; }).catch(() => {});
   $('#set-interval').addEventListener('change', e => saveSettings({ autoSyncMinutes: Number(e.target.value) }));
   main.querySelectorAll('[data-set-ai]').forEach(b => b.addEventListener('click', () => {
@@ -1137,6 +1237,58 @@ async function openSettings() {
     saveSettings(patch, true);
   }));
 }
+async function drawConnections() {
+  const el = $('#conn-list'); if (!el) return;
+  const c = await api('GET', '/api/connections').catch(e => { el.innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return null; });
+  if (!c) return;
+  el.innerHTML = `
+    <div class="conn">
+      <div class="conn-head"><span class="svc trello">Trello</span>${c.trello.configured ? `<span>Ingelogd als <b>${esc(c.trello.name)}</b></span><span class="spacer-h"></span><button class="link danger" data-conn-del="trello">Verwijderen</button>` : '<span class="hint">Nog niet ingesteld</span>'}</div>
+      ${c.trello.configured ? '<details><summary class="link">Opnieuw instellen</summary>' : '<div>'}
+      <ol class="steps">
+        <li>Ga naar <a href="https://trello.com/power-ups/admin" target="_blank" rel="noopener">trello.com/power-ups/admin</a>, maak een Power-Up (naam maakt niet uit) en open het tabblad <b>API key</b>. Kopieer de sleutel.</li>
+        <li>Plak de sleutel hieronder en klik op <b>Token ophalen</b>. Klik daar op <i>Allow</i> en kopieer het token.</li>
+      </ol>
+      <div class="form-row">
+        <label class="field grow">API-sleutel<input id="tr-key" autocomplete="off" spellcheck="false"></label>
+        <button class="btn ghost" id="tr-auth">Token ophalen</button>
+        <label class="field grow">Token<input id="tr-token" type="password" autocomplete="off" spellcheck="false"></label>
+        <button class="btn" id="tr-save">Opslaan en testen</button>
+      </div>
+      ${c.trello.configured ? '</details>' : '</div>'}
+    </div>
+    <div class="conn">
+      <div class="conn-head"><span class="svc jira">Jira</span>${c.jira.configured ? `<span>Ingelogd als <b>${esc(c.jira.name)}</b> op ${esc(c.jira.site)}</span><span class="spacer-h"></span><button class="link danger" data-conn-del="jira">Verwijderen</button>` : '<span class="hint">Nog niet ingesteld</span>'}</div>
+      ${c.jira.configured ? '<details><summary class="link">Opnieuw instellen</summary>' : '<div>'}
+      <ol class="steps">
+        <li>Maak een API-token op <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener">id.atlassian.com → API-tokens</a> (kies <b>Create API token</b>, zonder scopes).</li>
+        <li>Vul de site van je team in (bijvoorbeeld <code>jouwteam.atlassian.net</code>), je e-mailadres van Atlassian en het token.</li>
+      </ol>
+      <div class="form-row">
+        <label class="field grow">Site<input id="ji-site" placeholder="jouwteam.atlassian.net" value="${esc(c.jira.site || '')}" autocomplete="off"></label>
+        <label class="field grow">E-mail<input id="ji-email" value="${esc(c.jira.email || '')}" autocomplete="off"></label>
+        <label class="field grow">API-token<input id="ji-token" type="password" autocomplete="off" spellcheck="false"></label>
+        <button class="btn" id="ji-save">Opslaan en testen</button>
+      </div>
+      ${c.jira.configured ? '</details>' : '</div>'}
+    </div>`;
+  $('#tr-auth').addEventListener('click', () => {
+    const key = $('#tr-key').value.trim(); if (!key) return toast('Plak eerst de API-sleutel', true);
+    open(`https://trello.com/1/authorize?expiration=never&scope=read,write&response_type=token&name=Leerjournaal&key=${encodeURIComponent(key)}`, '_blank', 'noopener');
+  });
+  const save = async (kind, body, btn) => {
+    btn.disabled = true; const label = btn.textContent; btn.textContent = 'Testen…';
+    try { const r = await api('PUT', `/api/connections/${kind}`, body); toast(`${svcName(kind)} werkt: ingelogd als ${r.name}`); drawConnections(); }
+    catch (e) { fail(e); btn.disabled = false; btn.textContent = label; }
+  };
+  $('#tr-save').addEventListener('click', e => save('trello', { key: $('#tr-key').value, token: $('#tr-token').value }, e.currentTarget));
+  $('#ji-save').addEventListener('click', e => save('jira', { site: $('#ji-site').value, email: $('#ji-email').value, token: $('#ji-token').value }, e.currentTarget));
+  el.querySelectorAll('[data-conn-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm(`${svcName(b.dataset.connDel)}-account verwijderen? Gekoppelde borden worden dan niet meer bijgewerkt.`)) return;
+    await api('DELETE', `/api/connections/${b.dataset.connDel}`); drawConnections();
+  }));
+}
+
 async function saveSettings(patch, rerender = false) {
   try {
     state.settings = await api('PUT', '/api/settings', patch);

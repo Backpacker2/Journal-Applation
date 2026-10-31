@@ -408,3 +408,24 @@ select { font: inherit; color: var(--ink); background: var(--bg); border: 1px so
 details.panel summary { cursor: pointer; }
 details.panel[open] summary { margin-bottom: 8px; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ---------- koppelingen Trello/Jira ---------- */
+.link-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; }
+.svc { font-size: 11px; font-weight: 800; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; color: #fff; }
+.svc.trello { background: #0c66e4; }
+.svc.jira { background: #2684ff; }
+.k-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.k-key { font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; }
+.k-badge { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--card-2); color: var(--muted); }
+.k-badge.warn { background: var(--amber-soft); color: var(--amber); }
+.conflicts { border-color: var(--amber); }
+.conflict { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.conflict-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.conflict-grid > div { background: var(--card-2); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.conn { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.conn:first-child { border-top: 0; padding-top: 0; }
+.conn-head { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+@media (max-width: 760px) { .conflict-grid { grid-template-columns: 1fr; } }
+.conn details > summary { cursor: pointer; font-size: 12.5px; list-style: none; margin-bottom: 8px; }
+.conn details > summary::-webkit-details-marker { display: none; }
+.inline-select { background: var(--input, var(--card-2)); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; }
