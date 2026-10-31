@@ -125,8 +125,10 @@ kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`).
 **Kanban koppelen met Trello of Jira.** Per project kun je het bord koppelen, bijvoorbeeld het groepsproject aan Jira
 en je persoonlijke project aan Trello.
 1. Stel eenmalig je account in: *Instellingen → Koppelingen*.
-   - **Trello**: maak op [trello.com/power-ups/admin](https://trello.com/power-ups/admin) een Power-Up (naam maakt niet
-     uit) en kopieer onder *API key* de sleutel. Plak die in de app, klik **Token ophalen**, kies *Allow* en plak het token.
+   - **Trello**: maak op [trello.com/apps/admin](https://trello.com/apps/admin) een nieuwe app en kies **Mijn app gebruikt
+     geen Power-Up-mogelijkheden** (dan is er geen Iframe-URL nodig). Open het tabblad **Trello Auth** en klik
+     **Generate a new API Key**. Gebruik níet de Client-ID van het tabblad OAuth 2.0; die werkt hier niet. Plak de sleutel in
+     de app, klik **Token ophalen**, kies *Allow* en plak het token.
    - **Jira**: maak een API-token op [id.atlassian.com → API-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
      (*Create API token*, zonder scopes). Vul de site in (`jouwteam.atlassian.net`), je e-mailadres en het token.
    - Klik **Opslaan en testen**. De gegevens staan versleuteld in `data/koppelingen.txt`.

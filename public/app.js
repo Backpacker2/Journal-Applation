@@ -1246,7 +1246,8 @@ async function drawConnections() {
       <div class="conn-head"><span class="svc trello">Trello</span>${c.trello.configured ? `<span>Ingelogd als <b>${esc(c.trello.name)}</b></span><span class="spacer-h"></span><button class="link danger" data-conn-del="trello">Verwijderen</button>` : '<span class="hint">Nog niet ingesteld</span>'}</div>
       ${c.trello.configured ? '<details><summary class="link">Opnieuw instellen</summary>' : '<div>'}
       <ol class="steps">
-        <li>Ga naar <a href="https://trello.com/power-ups/admin" target="_blank" rel="noopener">trello.com/power-ups/admin</a>, maak een Power-Up (naam maakt niet uit) en open het tabblad <b>API key</b>. Kopieer de sleutel.</li>
+        <li>Ga naar <a href="https://trello.com/apps/admin" target="_blank" rel="noopener">trello.com/apps/admin</a> en maak een nieuwe app. Kies <b>Mijn app gebruikt geen Power-Up-mogelijkheden</b>; dan is er geen URL nodig.</li>
+        <li>Open in die app het tabblad <b>Trello Auth</b> (niet OAuth 2.0) en klik <b>Generate a new API Key</b>. Kopieer de sleutel: 32 tekens, alleen cijfers en a–f.</li>
         <li>Plak de sleutel hieronder en klik op <b>Token ophalen</b>. Klik daar op <i>Allow</i> en kopieer het token.</li>
       </ol>
       <div class="form-row">
@@ -1274,6 +1275,7 @@ async function drawConnections() {
     </div>`;
   $('#tr-auth').addEventListener('click', () => {
     const key = $('#tr-key').value.trim(); if (!key) return toast('Plak eerst de API-sleutel', true);
+    if (!/^[0-9a-f]{32}$/.test(key)) return toast('Dit is geen Trello API-sleutel. De Client-ID van OAuth 2.0 werkt hier niet: neem de sleutel uit het tabblad Trello Auth (32 tekens, alleen cijfers en a–f).', true);
     open(`https://trello.com/1/authorize?expiration=never&scope=read,write&response_type=token&name=Leerjournaal&key=${encodeURIComponent(key)}`, '_blank', 'noopener');
   });
   const save = async (kind, body, btn) => {
