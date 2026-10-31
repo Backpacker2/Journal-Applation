@@ -163,6 +163,13 @@ route('POST', '/api/spaces/:type/:slug/entries', async ({ type, slug }, body) =>
   return e;
 });
 
+route('POST', '/api/spaces/:type/:slug/entries/move', async ({ type, slug }, body) => {
+  const ids = Array.isArray(body.ids) ? body.ids.slice(0, 2000) : [];
+  const moved = ids.map(id => store.updateEntry(type, slug, id, { thread: String(body.thread || '') }));
+  await git.commit(`${moved.length} berichten verplaatst: ${type}/${slug}`);
+  return { moved: moved.length };
+});
+
 route('PUT', '/api/spaces/:type/:slug/entries/:id', async ({ type, slug, id }, body) => {
   const e = store.updateEntry(type, slug, id, body);
   await git.commit(`Bijgewerkt: ${type}/${slug}/${id}`);
@@ -176,13 +183,16 @@ route('POST', '/api/spaces/:type/:slug/entries/delete', async ({ type, slug }, b
   return r;
 });
 
-route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }) => {
+route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }, body = {}) => {
   const meta = store.getMeta(type, slug);
-  const entries = store.listEntries(type, slug);
+  // In een project met chats: vragen over (en in) de gekozen chat.
+  const known = new Set((meta.threads || []).map(t => t.id));
+  const thread = known.has(body.thread) ? body.thread : '';
+  const entries = store.listEntries(type, slug).filter(e => !known.size || (known.has(e.thread) ? e.thread : '') === thread);
   const text = await ai.callClaude(cfg, ai.buildQuestionPrompt(meta, entries), 600);
   const questions = ai.parseQuestions(text);
   if (!questions.length) throw Object.assign(new Error('De AI gaf geen bruikbare vragen terug.'), { status: 502 });
-  const created = questions.map(q => store.addEntry(type, slug, { kind: 'vraag', question: q, source: 'ai' }));
+  const created = questions.map(q => store.addEntry(type, slug, { kind: 'vraag', question: q, source: 'ai', thread }));
   await git.commit(`AI-vragen toegevoegd: ${type}/${slug}`);
   return created;
 });

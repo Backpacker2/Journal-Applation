@@ -96,6 +96,11 @@ nooit in de app-repository terecht.
 **Projecten en chats.** Klik op `+` naast *Projecten* of *Chats*. Projecten zijn voor school en werk en krijgen
 later extra tabbladen (Kanban, Feedback). Chats zijn voor alles waar je even over wilt nadenken.
 
+**Chats binnen een project.** Boven de gedachten van een project staan de chats: *Algemeen* en de chats die je zelf
+maakt met **+ Nieuwe chat** (bijvoorbeeld per onderwerp of user story). Wat je typt, komt in de gekozen chat. Met
+*☐ Selecteren → Verplaatsen naar…* zet je bestaande berichten in een andere chat. Bij het genereren van een document
+kies je welke chats meedoen (standaard alle); in het document staat bij elke gedachte uit welke chat hij komt.
+
 **Gedachten.** Typ onderaan en druk op **Enter** (Shift+Enter = nieuwe regel). Elke gedachte wordt een apart bestand.
 - **Reageer**: koppelt je nieuwe gedachte aan een eerdere; klik op het citaat om terug te springen.
 - **Bewerk**: pas een gedachte achteraf aan (git bewaart de oude versie).

@@ -166,6 +166,8 @@ async function openSpace(type, slug, view = 'gedachten') {
     state.view = view; state.replyTo = null; state.composeMode = 'gedachte'; state.editing = null;
     state.openDoc = null; state.docEdit = false; state.selecting = false; state.selected.clear();
     try { localStorage.setItem('lj-last', `${type}/${slug}`); } catch {}
+    state.thread = '';
+    try { const t = localStorage.getItem(`lj-thread-${type}-${slug}`) || ''; if (threadsOf().some(x => x.id === t)) state.thread = t; } catch {}
     renderSidebar(); render();
   } catch (e) { fail(e); }
 }
@@ -234,7 +236,11 @@ $('#main').addEventListener('click', async e => {
     if (a === 'title-entry') return titleEntry(t.dataset.id);
     if (a === 'delete-entry') return deleteEntries([t.dataset.id]);
     if (a === 'select-mode') { state.selecting = !state.selecting; state.selected.clear(); return renderThread(false); }
-    if (a === 'select-all') { const all = state.current.entries.map(x => x.id); if (state.selected.size === all.length) state.selected.clear(); else all.forEach(id => state.selected.add(id)); return renderThread(false); }
+    if (a === 'thread') return setThread(t.dataset.id);
+    if (a === 'thread-new') return newThread();
+    if (a === 'thread-rename') return renameThread();
+    if (a === 'thread-delete') return deleteThread();
+    if (a === 'select-all') { const all = visibleEntries().map(x => x.id); if (state.selected.size === all.length) state.selected.clear(); else all.forEach(id => state.selected.add(id)); return renderThread(false); }
     if (a === 'delete-selected') return deleteEntries([...state.selected]);
     if (a === 'share-selected') return shareEntries([...state.selected]);
     if (a === 'reply') { state.replyTo = t.dataset.id; state.composeMode = 'gedachte'; renderComposer(); $('#compose-input').focus(); }
@@ -320,11 +326,71 @@ $('#main').addEventListener('click', async e => {
 });
 
 // ---------- gedachten ----------
+// ---------- chats binnen een project ----------
+const threadsOf = () => (state.current?.type === 'projecten' ? state.current.meta.threads || [] : []);
+const threadOfEntry = e => (threadsOf().some(t => t.id === e.thread) ? e.thread : '');
+// De berichten die nu zichtbaar zijn: in een project met chats alleen die van de gekozen chat.
+function visibleEntries() {
+  const c = state.current;
+  if (c.type !== 'projecten' || !threadsOf().length) return c.entries;
+  return c.entries.filter(e => threadOfEntry(e) === (state.thread || ''));
+}
+function setThread(id) {
+  state.thread = id || ''; state.replyTo = null; state.selected.clear();
+  try { localStorage.setItem(`lj-thread-${state.current.type}-${state.current.slug}`, state.thread); } catch {}
+  renderThread();
+}
+function threadBar() {
+  const c = state.current; if (c.type !== 'projecten') return '';
+  const threads = threadsOf();
+  const count = id => c.entries.filter(e => threadOfEntry(e) === id).length;
+  const cur = threads.find(t => t.id === state.thread);
+  return `<div class="thread-bar">
+      <span class="hint">Chats:</span>
+      <button class="tchip${!state.thread ? ' on' : ''}" data-action="thread" data-id="">Algemeen <span>${count('')}</span></button>
+      ${threads.map(t => `<button class="tchip${state.thread === t.id ? ' on' : ''}" data-action="thread" data-id="${t.id}">${esc(t.name)} <span>${count(t.id)}</span></button>`).join('')}
+      <button class="tchip add" data-action="thread-new">+ Nieuwe chat</button>
+      ${cur ? `<span class="spacer-h"></span><button class="link" data-action="thread-rename">Naam wijzigen</button><button class="link danger" data-action="thread-delete">Chat weghalen</button>` : ''}
+    </div>`;
+}
+async function saveThreads(list) {
+  state.current.meta = await api('PUT', base(), { threads: list });
+}
+async function newThread() {
+  const name = prompt('Naam van de nieuwe chat in dit project (bijvoorbeeld een onderwerp of user story):');
+  if (!name || !name.trim()) return;
+  const before = new Set(threadsOf().map(t => t.id));
+  await saveThreads([...threadsOf(), { name: name.trim() }]);
+  const added = threadsOf().find(t => !before.has(t.id));
+  toast(`Chat “${name.trim()}” gemaakt`); setThread(added?.id || '');
+}
+async function renameThread() {
+  const t = threadsOf().find(x => x.id === state.thread); if (!t) return;
+  const name = prompt('Nieuwe naam van deze chat:', t.name); if (!name || !name.trim()) return;
+  await saveThreads(threadsOf().map(x => x.id === t.id ? { ...x, name: name.trim() } : x)); renderThread(false);
+}
+async function deleteThread() {
+  const t = threadsOf().find(x => x.id === state.thread); if (!t) return;
+  const n = state.current.entries.filter(e => threadOfEntry(e) === t.id).length;
+  if (!confirm(n ? `Chat “${t.name}” weghalen? De ${n} berichten blijven bewaard en komen bij Algemeen te staan.` : `Lege chat “${t.name}” weghalen?`)) return;
+  if (n) await api('POST', `${base()}/entries/move`, { ids: state.current.entries.filter(e => threadOfEntry(e) === t.id).map(e => e.id), thread: '' });
+  await saveThreads(threadsOf().filter(x => x.id !== t.id));
+  state.current.entries.forEach(e => { if (e.thread === t.id) delete e.thread; });
+  setThread('');
+}
+async function moveSelected(thread) {
+  const ids = [...state.selected]; if (!ids.length) return;
+  await api('POST', `${base()}/entries/move`, { ids, thread });
+  state.current.entries.forEach(e => { if (ids.includes(e.id)) { if (thread) e.thread = thread; else delete e.thread; } });
+  const name = thread ? threadsOf().find(t => t.id === thread)?.name : 'Algemeen';
+  state.selecting = false; state.selected.clear(); toast(`${ids.length} ${ids.length === 1 ? 'bericht' : 'berichten'} verplaatst naar ${name}`); renderThread(false);
+}
+
 function renderThread(scroll = true) {
   const c = state.current;
   const byId = Object.fromEntries(c.entries.map(e => [e.id, e]));
   let html = '', lastDay = null;
-  for (const e of c.entries) {
+  for (const e of visibleEntries()) {
     const day = dayKey(e.id);
     if (day !== lastDay) {
       const sp = (c.meta.sprints || []).filter(x => x.from <= day && (lastDay ? x.from > lastDay : x.to >= day));
@@ -333,8 +399,9 @@ function renderThread(scroll = true) {
     }
     html += e.kind === 'vraag' ? questionCard(e) : thoughtCard(e, byId);
   }
-  if (!c.entries.length) html = `<div class="empty-state"><h1>Nog leeg</h1><p>Typ hieronder je eerste gedachte. Elke gedachte wordt apart opgeslagen met de datum en tijd.</p></div>`;
+  if (!visibleEntries().length) html = `<div class="empty-state"><h1>Nog leeg</h1><p>Typ hieronder je eerste gedachte${state.thread ? ' in deze chat' : ''}. Elke gedachte wordt apart opgeslagen met de datum en tijd.</p></div>`;
   $('#view').outerHTML = `<div id="view" style="display:contents">
+      ${threadBar()}
       <div class="thread" id="thread"><div class="thread-inner">${html}</div></div>
       <div class="composer" id="composer"></div>
     </div>`;
@@ -387,15 +454,29 @@ function questionCard(e) {
 
 function renderSelectBar() {
   const el = $('#composer'); if (!el) return;
-  const n = state.selected.size, all = state.current.entries.length;
+  const n = state.selected.size, all = visibleEntries().length;
+  const isProject = state.current.type === 'projecten';
   el.innerHTML = `<div class="select-bar">
       <span><b>${n}</b> geselecteerd</span>
       <button class="btn small ghost" data-action="select-all">${n === all && all ? 'Niets' : 'Alles'} selecteren</button>
       <span class="spacer-h"></span>
+      ${isProject ? `<select id="move-to" class="inline-select" ${n ? '' : 'disabled'} title="Verplaatsen naar een andere chat">
+        <option value="">Verplaatsen naar…</option>
+        ${[{ id: '', name: 'Algemeen' }, ...threadsOf()].filter(t => t.id !== (state.thread || '')).map(t => `<option value="to:${t.id}">${esc(t.name)}</option>`).join('')}
+        <option value="new">+ Nieuwe chat…</option></select>` : ''}
       <button class="btn small" data-action="share-selected" ${n ? '' : 'disabled'}>Delen</button>
       <button class="btn small danger" data-action="delete-selected" ${n ? '' : 'disabled'}>Verwijderen</button>
       <button class="btn small primary" data-action="select-mode">Klaar</button>
     </div>`;
+  $('#move-to')?.addEventListener('change', async ev => {
+    const v = ev.target.value; ev.target.value = '';
+    if (v === 'new') {
+      const name = prompt('Naam van de nieuwe chat:'); if (!name || !name.trim()) return;
+      const before = new Set(threadsOf().map(t => t.id));
+      await saveThreads([...threadsOf(), { name: name.trim() }]).catch(fail);
+      const added = threadsOf().find(t => !before.has(t.id)); if (added) await moveSelected(added.id).catch(fail);
+    } else if (v.startsWith('to:')) await moveSelected(v.slice(3)).catch(fail);
+  });
 }
 
 function renderComposer() {
@@ -408,7 +489,7 @@ function renderComposer() {
     <div class="tools">
       ${feature('aiButtons') ? '<button class="btn small chip-ai" data-action="ai-questions">✦ AI-vragen genereren</button>' : ''}
       <button class="btn small chip-own" data-action="mode-question">${isQ ? '← Terug naar gedachte' : '+ Eigen vraag toevoegen'}</button>
-      ${c.entries.length ? '<button class="btn small ghost" data-action="select-mode">☐ Selecteren</button>' : ''}
+      ${visibleEntries().length ? '<button class="btn small ghost" data-action="select-mode">☐ Selecteren</button>' : ''}
       ${isQ ? '<span class="mode-pill">Je typt nu een vraag aan jezelf. Het antwoord geef je in het kaartje.</span>' : ''}
     </div>
     <div class="input-row">
@@ -427,6 +508,7 @@ async function sendCompose() {
     const body = state.composeMode === 'vraag'
       ? { kind: 'vraag', question: text, source: 'ik' }
       : { kind: 'gedachte', text, replyTo: state.replyTo };
+    if (state.current.type === 'projecten' && state.thread) body.thread = state.thread;
     let entry;
     try {
       entry = await api('POST', `${base()}/entries`, body);
@@ -560,7 +642,7 @@ function jumpTo(id) {
 async function aiQuestions(btn) {
   btn.disabled = true; btn.textContent = 'Vragen bedenken…';
   try {
-    const qs = await api('POST', `${base()}/ai/questions`);
+    const qs = await api('POST', `${base()}/ai/questions`, { thread: state.thread || '' });
     state.current.entries.push(...qs); renderThread(); bumpCount(qs.length);
   } catch (e) {
     fail(e); btn.disabled = false; btn.textContent = '✦ AI-vragen genereren';
@@ -594,6 +676,8 @@ async function renderDocs() {
           <label class="field">Van<input type="date" id="doc-from" value="${cur ? cur.from : isoDay(twoWeeks)}"></label>
           <label class="field">Tot en met<input type="date" id="doc-to" value="${cur ? cur.to : isoDay(today)}"></label>
         </div>
+        ${threadsOf().length ? `<div class="form-row thread-pick"><span class="hint">Chats:</span>
+          ${[{ id: '', name: 'Algemeen' }, ...threadsOf()].map(t => `<label class="check"><input type="checkbox" class="doc-thread" value="${t.id}" checked> ${esc(t.name)}</label>`).join('')}</div>` : ''}
         <div class="form-row">
           ${feature('aiButtons') ? `<button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>` : ''}
           <button class="btn" data-action="copy-prompt">Kopieer prompt</button>
@@ -750,7 +834,10 @@ async function saveDoc(as) {
 }
 
 function docParams() {
-  return { title: $('#doc-title').value.trim(), from: $('#doc-from').value, to: $('#doc-to').value };
+  const boxes = [...document.querySelectorAll('.doc-thread')];
+  const threads = boxes.length && boxes.some(b => !b.checked) ? boxes.filter(b => b.checked).map(b => b.value) : undefined;
+  if (boxes.length && !boxes.some(b => b.checked)) throw new Error('Kies minstens één chat.');
+  return { title: $('#doc-title').value.trim(), from: $('#doc-from').value, to: $('#doc-to').value, threads };
 }
 async function generateDoc(btn) {
   btn.disabled = true; btn.textContent = 'Bezig met schrijven… (kan een minuut duren)';
@@ -1125,6 +1212,8 @@ async function openHit(d) {
     state.openDoc = await api('GET', `${base()}/documents/${d.id}`); renderDocs();
   } else {
     await openSpace(d.type, d.slug);
+    const e = d.id && state.current.entries.find(x => x.id === d.id);
+    if (e && threadOfEntry(e) !== (state.thread || '')) setThread(threadOfEntry(e));
     if (d.id) setTimeout(() => jumpTo(d.id), 150);
   }
 }
