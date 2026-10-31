@@ -1,5 +1,6 @@
 # Persoonlijke instellingen en geheimen: NOOIT committen
 config.json
+instellingen.json
 secret.key
 *.key
 

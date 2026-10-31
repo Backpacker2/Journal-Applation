@@ -34,7 +34,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 - **Meerdere sleutels**: oude sleutels toevoegen, zodat je data van vorige versies leesbaar blijft
 - **Automatisch naar GitHub**: elke wijziging wordt binnen een paar seconden geüpload; lukt dat niet, dan probeert de app het later opnieuw
 - **Updates via de app**: knop *Nu bijwerken*, de app start zichzelf opnieuw
-- Standaard een **donker thema** (knop *Thema* wisselt naar licht)
+- Standaard een **donker thema**; onder *Instellingen* kies je uit zes thema's
 
 ## 2. Installeren
 
@@ -124,6 +124,14 @@ kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`). Koppele
 **Feedback (projecten).** Tabblad *Feedback*: leg feedback vast (titel, van wie, datum, de feedback zelf), beantwoord de
 vragen die erin stonden, schrijf op wat je ervan leerde en koppel het aan documenten of kaarten. Feedback uit de gekozen
 periode gaat mee naar het document; de AI gebruikt de feedback zelf alleen als context, jouw antwoorden en lessen als inhoud.
+
+**Instellingen.** Linksonder *Instellingen*: kies een **thema** (Donker, Licht, Nacht, Sepia, Bos, Oceaan), zet
+**functies** aan of uit (Kanban, Feedback, AI-knoppen), stel **automatisch uploaden** en het interval in, en vul je
+**API-sleutel** en model in. Alles wordt bewaard in `instellingen.json` op je eigen computer (staat in `.gitignore`).
+
+**Templatebibliotheek.** In het tabblad *Template*: **Opslaan in bibliotheek…** bewaart het template zodat je het in
+andere projecten en chats kunt gebruiken. In de bibliotheek kies je **Gebruiken**, en daarna **Opslaan**. Je eigen
+templates staan versleuteld in `data/templates/`; de twee standaardtemplates zitten er altijd in.
 
 **Vragen.**
 - **+ Eigen vraag toevoegen**: typ een vraag aan jezelf; het antwoord geef je in het kaartje.

@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { loadConfig } = require('./lib/config');
+const { loadConfig, saveUiSettings } = require('./lib/config');
 const { loadKeyring, loadExtraKeys, parseKey, keyId } = require('./lib/crypto');
 const { Store } = require('./lib/store');
 const { Git } = require('./lib/git');
@@ -231,6 +231,36 @@ route('DELETE', '/api/spaces/:type/:slug/feedback/:id', async ({ type, slug, id 
 
 route('POST', '/api/sync', async () => git.sync());
 
+// ---------- instellingen ----------
+const THEMES = ['dark', 'light', 'night', 'sepia', 'forest', 'ocean'];
+const publicSettings = () => ({
+  theme: cfg.theme, features: cfg.features, autoSync: !!cfg.autoSync, autoSyncMinutes: cfg.autoSyncMinutes,
+  model: cfg.model, hasApiKey: !!cfg.anthropicApiKey, themes: THEMES
+});
+route('GET', '/api/settings', async () => publicSettings());
+route('PUT', '/api/settings', async (p, body) => {
+  const patch = {};
+  if (THEMES.includes(body.theme)) patch.theme = body.theme;
+  if (body.features && typeof body.features === 'object') {
+    patch.features = { ...cfg.features };
+    for (const k of ['kanban', 'feedback', 'aiButtons']) if (typeof body.features[k] === 'boolean') patch.features[k] = body.features[k];
+  }
+  if (typeof body.autoSync === 'boolean') patch.autoSync = body.autoSync;
+  if (Number.isFinite(body.autoSyncMinutes)) patch.autoSyncMinutes = Math.max(0, Math.min(1440, Math.round(body.autoSyncMinutes)));
+  if (typeof body.model === 'string' && /^[\w.:-]{3,80}$/.test(body.model.trim())) patch.model = body.model.trim();
+  if (typeof body.anthropicApiKey === 'string') patch.anthropicApiKey = body.anthropicApiKey.trim();
+  saveUiSettings(patch);
+  Object.assign(cfg, patch);
+  applySyncSettings();
+  return publicSettings();
+});
+
+// ---------- templatebibliotheek ----------
+route('GET', '/api/templates', async () => store.listTemplates());
+route('POST', '/api/templates', async (p, body) => { const t = store.saveTemplate(body); await git.commit('Template opgeslagen'); return t; });
+route('PUT', '/api/templates/:id', async ({ id }, body) => { const t = store.saveTemplate(body, id); await git.commit('Template bijgewerkt'); return t; });
+route('DELETE', '/api/templates/:id', async ({ id }) => { const r = store.deleteTemplate(id); await git.commit('Template verwijderd'); return r; });
+
 // Een nieuwere versie van de app kan een oude, nog draaiende versie netjes laten stoppen.
 route('POST', '/api/shutdown', async () => {
   console.log('\n  Een nieuwere Leerjournaal neemt het over. Deze stopt nu.\n');
@@ -265,6 +295,14 @@ const server = http.createServer(async (req, res) => {
 });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Automatisch uploaden aan/uit en het interval; ook aangeroepen als je Instellingen wijzigt.
+let syncInterval = null;
+function applySyncSettings() {
+  if (cfg.autoSync) git.enableAutoSync(); else git.disableAutoSync();
+  clearInterval(syncInterval); syncInterval = null;
+  if (cfg.autoSyncMinutes > 0) syncInterval = setInterval(() => git.backgroundSync(), cfg.autoSyncMinutes * 60e3);
+}
 
 function claimPort() {
   return new Promise((resolve, reject) => {
@@ -322,13 +360,8 @@ async function handleBusyPort() {
     await git.commit('Mapnamen vervangen door willekeurige codes');
     console.log(`  ${renamed} map(pen) hernoemd naar een willekeurige code, zodat namen niet meer leesbaar zijn.`);
   }
-  if (cfg.autoSync) {
-    git.enableAutoSync();
-    git.scheduleSync(1500); // wijzigingen die nog niet op GitHub staan meteen uploaden
-  }
-  if (cfg.autoSyncMinutes > 0) {
-    setInterval(() => git.backgroundSync(), cfg.autoSyncMinutes * 60e3);
-  }
+  applySyncSettings();
+  if (cfg.autoSync) git.scheduleSync(1500); // wijzigingen die nog niet op GitHub staan meteen uploaden
   markReady();
   console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
   console.log(`  Data:    ${cfg.dataDir}`);

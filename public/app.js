@@ -108,6 +108,7 @@ const byRecent = (a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.la
 
 function renderSidebar() {
   const ad = $('#all-docs-btn'); if (ad) ad.classList.toggle('active', state.mainMode === 'docs');
+  const sb = $('#settings-btn'); if (sb) sb.classList.toggle('on', state.mainMode === 'settings');
   const archived = state.spaces.filter(s => s.archived).sort(byRecent);
   const box = $('#archive');
   if (box) {
@@ -246,6 +247,20 @@ $('#main').addEventListener('click', async e => {
     if (a === 'fb-addq') { collectFeedbackForm(); state.fbDraft.questions.push({ q: '', a: '' }); return drawFeedback(); }
     if (a === 'fb-delq') { collectFeedbackForm(); state.fbDraft.questions.splice(Number(t.dataset.i), 1); return drawFeedback(); }
     if (a === 'open-link') return openLink(t.dataset);
+    if (a === 'tpl-use') { const tp = state.templates.find(x => x.id === t.dataset.id); $('#template-input').value = tp.content; return toast(`“${tp.name}” staat in de editor. Klik op Opslaan om het te gebruiken.`); }
+    if (a === 'tpl-save-as') {
+      const name = prompt('Naam voor dit template in de bibliotheek:', state.current.meta.name); if (!name || !name.trim()) return;
+      await api('POST', '/api/templates', { name, content: $('#template-input').value }); toast('In de bibliotheek opgeslagen'); return drawTemplateLibrary();
+    }
+    if (a === 'tpl-update') {
+      if (!confirm('Dit template in de bibliotheek vervangen door wat nu in de editor staat?')) return;
+      await api('PUT', `/api/templates/${t.dataset.id}`, { content: $('#template-input').value }); toast('Template bijgewerkt'); return drawTemplateLibrary();
+    }
+    if (a === 'tpl-rename') {
+      const tp = state.templates.find(x => x.id === t.dataset.id); const name = prompt('Nieuwe naam:', tp.name); if (!name || !name.trim()) return;
+      await api('PUT', `/api/templates/${tp.id}`, { name }); return drawTemplateLibrary();
+    }
+    if (a === 'tpl-del') { if (!confirm('Dit template uit de bibliotheek verwijderen?')) return; await api('DELETE', `/api/templates/${t.dataset.id}`); return drawTemplateLibrary(); }
     if (a === 'docs-filter') { state.docsFilter = t.dataset.filter; return renderAllDocs(); }
     if (a === 'sprint-add') return addSprint();
     if (a === 'sprint-next') return nextSprint();
@@ -343,7 +358,7 @@ function renderComposer() {
   el.innerHTML = `
     ${parent ? `<div class="reply-bar"><span><b>Reageer op ${time(parent.id)}:</b> ${esc(parent.text || parent.question)}</span><button class="link" data-action="cancel-reply">✕</button></div>` : ''}
     <div class="tools">
-      <button class="btn small chip-ai" data-action="ai-questions">✦ AI-vragen genereren</button>
+      ${feature('aiButtons') ? '<button class="btn small chip-ai" data-action="ai-questions">✦ AI-vragen genereren</button>' : ''}
       <button class="btn small chip-own" data-action="mode-question">${isQ ? '← Terug naar gedachte' : '+ Eigen vraag toevoegen'}</button>
       ${c.entries.length ? '<button class="btn small ghost" data-action="select-mode">☐ Selecteren</button>' : ''}
       ${isQ ? '<span class="mode-pill">Je typt nu een vraag aan jezelf. Het antwoord geef je in het kaartje.</span>' : ''}
@@ -487,7 +502,7 @@ async function renderDocs() {
       <div class="panel">
         <h2>Document genereren</h2>
         <div class="sub">De AI ordent alleen jouw eigen gedachten en antwoorden volgens het template van ${state.current.type === 'projecten' ? 'dit project' : 'deze chat'}. Hij voegt niets toe.</div>
-        ${ai ? '' : '<div class="notice">Er is geen API-sleutel ingesteld. Gebruik "Kopieer prompt", plak die in Claude, en zet het resultaat terug via "Plak resultaat".</div>'}
+        ${ai || !feature('aiButtons') ? '' : '<div class="notice">Er is geen API-sleutel ingesteld. Gebruik "Kopieer prompt", plak die in Claude, en zet het resultaat terug via "Plak resultaat".</div>'}
         ${sprints.length ? `<div class="form-row"><label class="field grow">Periode
           <select id="doc-sprint"><option value="">Eigen periode kiezen</option>${sprints.map(x => `<option value="${x.id}" ${x.id === cur?.id ? 'selected' : ''}>${esc(x.name)} (${x.from.slice(8)}-${x.from.slice(5, 7)} t/m ${x.to.slice(8)}-${x.to.slice(5, 7)})</option>`).join('')}</select></label></div>` : ''}
         <div class="form-row">
@@ -496,7 +511,7 @@ async function renderDocs() {
           <label class="field">Tot en met<input type="date" id="doc-to" value="${cur ? cur.to : isoDay(today)}"></label>
         </div>
         <div class="form-row">
-          <button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>
+          ${feature('aiButtons') ? `<button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>` : ''}
           <button class="btn" data-action="copy-prompt">Kopieer prompt</button>
           <button class="btn ghost" data-action="paste-doc">Plak resultaat</button>
         </div>
@@ -637,14 +652,28 @@ async function copyPrompt() {
 }
 
 // ---------- template ----------
-function renderTemplate() {
+async function renderTemplate() {
   $('#view').outerHTML = `<div id="view" class="page"><div class="page-inner">
     <div class="panel">
       <h2>Template voor documenten</h2>
       <div class="sub">Dit template bepaalt hoe het document van ${state.current.type === 'projecten' ? 'dit project' : 'deze chat'} eruitziet: de kopjes, de taal en de toon. Gebruik {titel} voor de titel die je bij het genereren invult.</div>
       <textarea class="doc-editor template-editor" id="template-input">${esc(state.current.meta.template || '')}</textarea>
-      <div class="row-end"><button class="btn ghost" data-action="reset-template">Standaardtemplate</button><button class="btn primary" data-action="save-template">Opslaan</button></div>
+      <div class="row-end"><button class="btn ghost" data-action="tpl-save-as">Opslaan in bibliotheek…</button><span class="spacer-h"></span><button class="btn ghost" data-action="reset-template">Standaardtemplate</button><button class="btn primary" data-action="save-template">Opslaan</button></div>
+    </div>
+    <div class="panel"><h2>Templatebibliotheek</h2>
+      <div class="sub">Bewaar templates om ze in andere projecten en chats te gebruiken. <b>Gebruiken</b> zet het template in de editor hierboven; klik daarna op Opslaan.</div>
+      <div class="tpl-list" id="tpl-list"><div class="hint">Laden…</div></div>
     </div></div></div>`;
+  await drawTemplateLibrary();
+}
+async function drawTemplateLibrary() {
+  try {
+    state.templates = await api('GET', '/api/templates');
+    const el = $('#tpl-list'); if (!el) return;
+    el.innerHTML = state.templates.map(t => `<div class="tpl-row"><span class="name">${esc(t.name)}${t.builtIn ? ' <span class="hint">ingebouwd</span>' : ''}</span>
+      <button class="link accent" data-action="tpl-use" data-id="${t.id}">Gebruiken</button>
+      ${t.builtIn ? '' : `<button class="link" data-action="tpl-update" data-id="${t.id}">Overschrijven met editor</button><button class="link" data-action="tpl-rename" data-id="${t.id}">Naam wijzigen</button><button class="link danger" data-action="tpl-del" data-id="${t.id}">Verwijder</button>`}</div>`).join('');
+  } catch (e) { fail(e); }
 }
 
 // ---------- kanban ----------
@@ -930,11 +959,74 @@ $('#sync-btn').addEventListener('click', async e => {
   catch (err) { fail(err); }
   finally { b.disabled = false; b.textContent = 'Sync met GitHub'; loadStatus(); }
 });
-$('#theme-btn').addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem('lj-theme', next); } catch {}
-});
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme || 'dark';
+  try { localStorage.setItem('lj-theme', theme || 'dark'); } catch {}
+}
+async function loadSettings() {
+  try { state.settings = await api('GET', '/api/settings'); applyTheme(state.settings.theme); } catch {}
+}
+$('#settings-btn').addEventListener('click', openSettings);
+
+// ---------- instellingen ----------
+const THEME_INFO = {
+  dark: ['Donker', ['#12141b', '#1f2330', '#7c7cf0']], light: ['Licht', ['#f6f6f3', '#ffffff', '#5b5bd6']],
+  night: ['Nacht (zwart)', ['#000000', '#111114', '#8f8ff5']], sepia: ['Sepia', ['#f4ecdc', '#fffaf0', '#b0602c']],
+  forest: ['Bos', ['#0f1612', '#18241d', '#4cc38a']], ocean: ['Oceaan', ['#0d1520', '#152234', '#4ea8ff']]
+};
+async function openSettings() {
+  state.current = null; state.mainMode = 'settings'; renderSidebar();
+  await loadSettings();
+  const st = state.settings || {};
+  const f = st.features || {};
+  $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Instellingen</h1>
+    <div class="sub">Wijzigingen worden meteen opgeslagen, op deze computer (in instellingen.json, niet op GitHub).</div></div>
+    <div class="page"><div class="page-inner">
+      <div class="panel"><h2>Thema</h2>
+        <div class="theme-grid">${(st.themes || Object.keys(THEME_INFO)).map(t => `<button class="theme-card ${st.theme === t ? 'on' : ''}" data-set-theme="${t}">
+          <span class="theme-swatch">${THEME_INFO[t][1].map(c => `<span style="background:${c}"></span>`).join('')}</span>
+          <span class="theme-name">${THEME_INFO[t][0]}</span></button>`).join('')}</div></div>
+      <div class="panel"><h2>Functies</h2>
+        <label class="toggle-row"><input type="checkbox" data-feature="kanban" ${f.kanban !== false ? 'checked' : ''}><div><b>Kanban</b><span>Tabblad Kanban in projecten.</span></div></label>
+        <label class="toggle-row"><input type="checkbox" data-feature="feedback" ${f.feedback !== false ? 'checked' : ''}><div><b>Feedback</b><span>Tabblad Feedback in projecten.</span></div></label>
+        <label class="toggle-row"><input type="checkbox" data-feature="aiButtons" ${f.aiButtons !== false ? 'checked' : ''}><div><b>AI-knoppen</b><span>“AI-vragen genereren” en “Genereer ruwe versie”. Uit = alleen Kopieer prompt.</span></div></label>
+      </div>
+      <div class="panel"><h2>GitHub</h2>
+        <label class="toggle-row"><input type="checkbox" id="set-autosync" ${st.autoSync ? 'checked' : ''}><div><b>Automatisch uploaden</b><span>Elke wijziging gaat binnen een paar seconden naar GitHub.</span></div></label>
+        <label class="toggle-row"><span style="flex:1"><b style="color:var(--ink)">Elke zoveel minuten ophalen en uploaden</b>0 = uit. Handig als je ook op een ander apparaat schrijft.</span><input type="number" min="0" max="1440" class="inline-num" id="set-interval" value="${st.autoSyncMinutes ?? 10}"></label>
+      </div>
+      <div class="panel"><h2>AI</h2>
+        <div class="sub">${st.hasApiKey ? '✓ Er is een Anthropic API-sleutel ingesteld.' : 'Geen API-sleutel ingesteld: de AI-knoppen werken via Kopieer prompt.'} De sleutel blijft op deze computer.</div>
+        <div class="form-row">
+          <label class="field grow">API-sleutel<input type="password" id="set-key" placeholder="${st.hasApiKey ? '•••••••• (laat leeg om te houden)' : 'sk-ant-…'}" autocomplete="off"></label>
+          <label class="field">Model<input id="set-model" value="${esc(st.model || '')}"></label>
+          <button class="btn" data-set-ai="1">Opslaan</button>
+          ${st.hasApiKey ? '<button class="btn ghost" data-set-ai="clear">Sleutel weghalen</button>' : ''}
+        </div>
+      </div>
+      <div class="panel"><h2>Meer</h2>
+        <div class="form-row"><button class="btn" data-open-keys="1">Sleutels beheren</button><span class="hint">Templates beheer je in het tabblad Template van een project of chat.</span></div>
+      </div>
+    </div></div>`;
+  const main = $('#main');
+  main.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => saveSettings({ theme: b.dataset.setTheme }, true)));
+  main.querySelectorAll('[data-feature]').forEach(c => c.addEventListener('change', () => saveSettings({ features: { [c.dataset.feature]: c.checked } })));
+  $('#set-autosync').addEventListener('change', e => saveSettings({ autoSync: e.target.checked }));
+  $('#set-interval').addEventListener('change', e => saveSettings({ autoSyncMinutes: Number(e.target.value) }));
+  main.querySelectorAll('[data-set-ai]').forEach(b => b.addEventListener('click', () => {
+    const patch = { model: $('#set-model').value };
+    if (b.dataset.setAi === 'clear') patch.anthropicApiKey = '';
+    else if ($('#set-key').value.trim()) patch.anthropicApiKey = $('#set-key').value.trim();
+    saveSettings(patch, true);
+  }));
+}
+async function saveSettings(patch, rerender = false) {
+  try {
+    state.settings = await api('PUT', '/api/settings', patch);
+    applyTheme(state.settings.theme); loadStatus(); toast('Opgeslagen');
+    if (rerender) openSettings();
+  } catch (e) { fail(e); }
+}
 
 // ---------- sleutels ----------
 async function openKeys() {
@@ -1019,7 +1111,7 @@ async function applyUpdate(e) {
 
 // ---------- start ----------
 (async () => {
-  await Promise.all([loadSpaces().catch(fail), loadStatus()]);
+  await Promise.all([loadSpaces().catch(fail), loadStatus(), loadSettings()]);
   checkUpdate();
   setInterval(checkUpdate, 30 * 60e3);
   setInterval(loadStatus, 15e3);
