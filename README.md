@@ -335,6 +335,19 @@ jouw apparaten erbij kunnen. Je laptop gebruikt voortaan hetzelfde adres, zodat 
 
 ### Stap 1 – Mac Mini (Ubuntu)
 
+**Snelste manier:** zet op de Mini SSH aan (`sudo apt-get install -y openssh-server`, en noteer `hostname -I`) en
+voer dan op je **Mac** in de app-map uit:
+
+```bash
+bash tools/mini-installeren.sh gebruiker@ip-van-de-mini
+```
+
+Dat script doet alles hieronder in één keer (Node, git, beide repositories, sleutels, GitHub-inlog, `config.json`,
+de dienst en desgewenst Tailscale). Wat al op de Mini staat, wordt overgeslagen, dus je kunt het gerust opnieuw
+draaien. Log eerst in de app in bij GitHub (*Instellingen → GitHub → Beheren*), want die inlog gaat mee.
+
+**Met de hand:**
+
 ```bash
 sudo apt-get install -y git
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs

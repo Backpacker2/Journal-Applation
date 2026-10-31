@@ -36,7 +36,8 @@ WantedBy=default.target
 UNIT
 
 # Laat de dienst ook draaien als je niet bent ingelogd (na een herstart).
-loginctl enable-linger "$USER" 2>/dev/null || sudo loginctl enable-linger "$USER"
+ME="${USER:-$(id -un)}"
+loginctl enable-linger "$ME" 2>/dev/null || sudo loginctl enable-linger "$ME"
 systemctl --user daemon-reload
 systemctl --user enable --now leerjournaal.service
 sleep 2
