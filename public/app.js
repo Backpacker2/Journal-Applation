@@ -330,7 +330,8 @@ function renderThread(scroll = true) {
 const selAttrs = e => state.selecting ? ` data-sel="${e.id}"` : '';
 const selBox = e => state.selecting ? `<input type="checkbox" class="sel-box" ${state.selected.has(e.id) ? 'checked' : ''} tabindex="-1" aria-label="Selecteren">` : '';
 const titleLine = e => e.title ? `<div class="entry-title">${esc(e.title)}</div>` : '';
-const manageLinks = e => `<button class="link" data-action="title-entry" data-id="${e.id}">${e.title ? 'Naam wijzigen' : 'Naam geven'}</button><button class="link danger" data-action="delete-entry" data-id="${e.id}">Verwijder</button>`;
+// Een los bericht krijgt geen naam meer (alleen chats en projecten). Een eerder gegeven naam blijft zichtbaar en kan weg.
+const manageLinks = e => `${e.title ? `<button class="link" data-action="title-entry" data-id="${e.id}">Naam weghalen</button>` : ''}<button class="link danger" data-action="delete-entry" data-id="${e.id}">Verwijder</button>`;
 
 function thoughtCard(e, byId) {
   const parent = e.replyTo && byId[e.replyTo];
@@ -475,10 +476,9 @@ async function saveThought(id) {
 }
 async function titleEntry(id) {
   const e = state.current.entries.find(x => x.id === id); if (!e) return;
-  const title = prompt('Naam voor dit bericht (leeg laten = geen naam):', e.title || '');
-  if (title === null) return;
-  replaceEntry(await api('PUT', `${base()}/entries/${id}`, { title }));
-  renderThread(false); toast(title.trim() ? 'Naam opgeslagen' : 'Naam verwijderd');
+  if (!confirm(`De naam “${e.title}” van dit bericht weghalen? De tekst zelf blijft staan.`)) return;
+  replaceEntry(await api('PUT', `${base()}/entries/${id}`, { title: '' }));
+  renderThread(false); toast('Naam weggehaald');
 }
 
 async function deleteEntries(ids) {

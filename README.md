@@ -101,7 +101,7 @@ later extra tabbladen (Kanban, Feedback). Chats zijn voor alles waar je even ove
 - **Bewerk**: pas een gedachte achteraf aan (git bewaart de oude versie).
 
 **Berichten beheren.** Onder elk bericht staan ook:
-- **Naam geven / Naam wijzigen**: geef een gedachte of vraag een korte titel. Die komt ook mee in het document.
+- **Naam weghalen**: losse berichten krijgen geen naam meer (alleen chats en projecten). Had een bericht al een naam, dan blijft die staan tot je hem weghaalt.
 - **Verwijder**: haalt het bericht weg (in de git-geschiedenis blijft het versleuteld bestaan).
 - **☐ Selecteren** (boven het invoerveld): vink meerdere berichten aan en kies **Delen** (via het deelmenu, of gekopieerd naar je klembord) of **Verwijderen**.
 
