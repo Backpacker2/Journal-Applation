@@ -212,7 +212,12 @@ Je gedachten gaan naar een **tweede, aparte** repository. Zo staan app-code en d
    cd ~/Leerjournaal/data
    git remote add origin https://github.com/jouw-naam/Journal-Data.git
    ```
-3. Klik in de app één keer op **Sync met GitHub**. Daarna gaat alles vanzelf:
+3. **Inloggen**: ga naar *Instellingen → GitHub → Beheren* en volg de stappen. Je maakt een fine-grained token dat
+   alleen bij je data-repository mag (Contents: Read and write) en plakt het in de app. Kies *No expiration*, dan hoef je
+   nooit opnieuw in te loggen. Het token staat in `github.json` op je eigen computer (in `.gitignore`).
+   Liever *Inloggen met GitHub* met één klik? Maak eenmalig een OAuth-app met *Device Flow* aan en zet de Client ID
+   als `githubClientId` in `config.json` (de stappen staan op de inlogpagina).
+4. Klik in de app één keer op **Sync met GitHub**. Daarna gaat alles vanzelf:
    - elke nieuwe of aangepaste gedachte, vraag of document wordt na een paar seconden geüpload;
    - linksonder zie je de status: *wijziging wacht op upload*, *Uploaden…* of *Alles staat op GitHub*;
    - zonder internet blijft alles gewoon lokaal staan; de app probeert het later opnieuw (na 30 s, 1 min, 2 min, … tot 10 min);
@@ -277,6 +282,7 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 | *Vergrendeld · sleutel ontbreekt* in de zijbalk | `npm run sleutels`, of de oude sleutel plakken via **Sleutels** |
 | Mijn oude gedachten zijn weg | Ze staan waarschijnlijk in de `data`-map van je vorige versie. `npm run sleutels` laat zien waar |
 | *Nog geen GitHub-remote ingesteld* | Volg [hoofdstuk 6](#6-je-gedachten-koppelen-aan-github) |
+| *GitHub vraagt om in te loggen* | Klik linksonder op de melding en log in met een token (zie hoofdstuk 6) |
 | Upload mislukt | Klik linksonder op de status voor de uitleg. Alles staat in `data/.git/leerjournaal-sync.log`. Test in de terminal: `cd data && git push` |
 | Update wil niet | Je hebt app-bestanden aangepast: `git status` in de app-map, commit of herstel ze |
 | AI-knoppen geven een fout | Zet `anthropicApiKey` in `config.json`, of gebruik *Kopieer prompt* |

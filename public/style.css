@@ -400,3 +400,11 @@ select { font: inherit; color: var(--ink); background: var(--bg); border: 1px so
 .tpl-row:last-child { border-bottom: 0; }
 .tpl-row .name { flex: 1; font-weight: 600; font-size: 13.5px; }
 .sidebar .btn.on { border-color: var(--accent); color: #fff; }
+
+/* ---------- GitHub-login ---------- */
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.5; }
+.steps a, .sub a { color: var(--accent); }
+.device-code { font: 700 32px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; padding: 10px 0; }
+details.panel summary { cursor: pointer; }
+details.panel[open] summary { margin-bottom: 8px; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }

@@ -993,7 +993,10 @@ async function loadStatus() {
     if (dot) dot.style.background = !s.hasRemote ? '' : s.lastSyncError ? 'var(--red)' : (s.syncing || n) ? 'var(--amber)' : '';
     const st = $('#sync-status');
     st.style.cursor = s.lastSyncError ? 'pointer' : '';
-    st.onclick = s.lastSyncError ? () => alert(`Sync mislukt bij ${s.lastSyncError.step}.\n\n${s.lastSyncError.message}\n\nTechnische melding:\n${s.lastSyncError.detail}`) : null;
+    const needsLogin = s.lastSyncError && /inloggen|inloggegevens/i.test(s.lastSyncError.message || '');
+    if (needsLogin) $('#sync-status').textContent = 'GitHub vraagt om in te loggen · klik hier';
+    st.onclick = needsLogin ? () => { closeDrawer(); openGitHubLogin(); }
+      : s.lastSyncError ? () => alert(`Sync mislukt bij ${s.lastSyncError.step}.\n\n${s.lastSyncError.message}\n\nTechnische melding:\n${s.lastSyncError.detail}`) : null;
     if (s.keyCreatedNow && !sessionStorage.getItem('lj-key-warned')) {
       sessionStorage.setItem('lj-key-warned', '1');
       toast(`Nieuwe sleutel gemaakt in ${s.keyFile}. Maak er een back-up van!`, true);
@@ -1015,6 +1018,68 @@ async function loadSettings() {
   try { state.settings = await api('GET', '/api/settings'); applyTheme(state.settings.theme); } catch {}
 }
 $('#settings-btn').addEventListener('click', openSettings);
+
+// ---------- inloggen bij GitHub ----------
+let devicePoll = null;
+async function openGitHubLogin() {
+  clearTimeout(devicePoll);
+  state.current = null; state.mainMode = 'github'; renderSidebar(); setTopbar('GitHub');
+  $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Inloggen bij GitHub</h1>
+    <div class="sub">Nodig om je versleutelde gedachten te uploaden. Je logt één keer in; daarna blijft de app ingelogd.</div></div>
+    <div class="page"><div class="page-inner" id="gh"><div class="hint">Laden…</div></div></div>`;
+  try {
+    const g = await api('GET', '/api/github');
+    const repo = (g.remote || '').replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '') || 'je data-repository';
+    $('#gh').innerHTML = g.loggedIn ? `
+      <div class="panel"><h2>Ingelogd als ${esc(g.login)}</h2>
+        <div class="sub">Via ${g.via === 'device' ? 'Inloggen met GitHub' : 'een token'}, sinds ${fmtDateTime(g.savedAt)}. Uploaden naar <b>${esc(repo)}</b> gebruikt deze inlog.</div>
+        <div class="form-row"><button class="btn primary" id="gh-sync">Nu synchroniseren</button><button class="btn ghost" id="gh-logout">Uitloggen</button></div></div>`
+    : `
+      ${g.deviceFlow ? `<div class="panel"><h2>Inloggen met GitHub</h2>
+        <div class="sub">Je krijgt een code die je op github.com invult. Daarna is de app ingelogd.</div>
+        <div id="gh-device"><button class="btn primary" id="gh-start">Inloggen met GitHub</button></div></div>` : ''}
+      <div class="panel"><h2>${g.deviceFlow ? 'Of: met een token' : 'Inloggen met een token'}</h2>
+        <ol class="steps">
+          <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → nieuw fine-grained token</a>.</li>
+          <li>Naam: <b>Leerjournaal</b>. Vervaldatum: zo lang als je wilt (<i>No expiration</i> = nooit opnieuw inloggen).</li>
+          <li>Repository access: <b>Only select repositories</b> → <b>${esc(repo)}</b>.</li>
+          <li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>
+          <li>Klik <i>Generate token</i>, kopieer het en plak het hieronder.</li>
+        </ol>
+        <div class="form-row"><label class="field grow">Token<input type="password" id="gh-token" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
+          <button class="btn primary" id="gh-save">Inloggen</button></div>
+        <div class="sub">Het token blijft op deze computer (in <code>github.json</code>, niet op GitHub) en mag alleen bij ${esc(repo)}.</div>
+      </div>
+      ${g.deviceFlow ? '' : `<details class="panel"><summary><b>Liever inloggen met één klik?</b> (eenmalig instellen)</summary>
+        <ol class="steps">
+          <li>Maak een OAuth-app: <a href="https://github.com/settings/applications/new" target="_blank" rel="noopener">github.com → New OAuth App</a>. Homepage en callback-URL: <code>http://localhost:4173</code>.</li>
+          <li>Vink <b>Enable Device Flow</b> aan en sla op.</li>
+          <li>Kopieer de <b>Client ID</b> naar <code>config.json</code>: <code>"githubClientId": "…"</code> en start de app opnieuw.</li>
+        </ol></details>`}`;
+    const on = (id, fn) => { const el = $('#' + id); if (el) el.addEventListener('click', () => fn().catch(fail)); };
+    on('gh-save', async () => {
+      const r = await api('POST', '/api/github/token', { token: $('#gh-token').value });
+      toast(`Ingelogd als ${r.login}${r.repo ? ` · toegang tot ${r.repo}` : ''}`); openGitHubLogin(); loadStatus();
+    });
+    on('gh-logout', async () => { if (!confirm('Uitloggen bij GitHub in de app?')) return; await api('DELETE', '/api/github'); openGitHubLogin(); });
+    on('gh-sync', async () => { await api('POST', '/api/sync'); toast('Gesynchroniseerd met GitHub'); loadStatus(); });
+    on('gh-start', async () => {
+      const d = await api('POST', '/api/github/device');
+      $('#gh-device').innerHTML = `<div class="device-code">${esc(d.userCode)}</div>
+        <div class="form-row"><a class="btn primary" href="${esc(d.verificationUri)}" target="_blank" rel="noopener">Open github.com/login/device</a>
+        <button class="btn ghost" id="gh-copy">Code kopiëren</button></div><div class="hint" id="gh-wait">Wachten tot je de code op GitHub hebt ingevuld…</div>`;
+      $('#gh-copy').addEventListener('click', () => navigator.clipboard.writeText(d.userCode).then(() => toast('Code gekopieerd')));
+      const poll = async () => {
+        if (state.mainMode !== 'github') return;
+        const r = await api('POST', '/api/github/device/poll').catch(e => ({ state: 'fout', error: e.message }));
+        if (r.state === 'klaar') { toast(`Ingelogd als ${r.login}`); loadStatus(); return openGitHubLogin(); }
+        if (r.state === 'wachten') { devicePoll = setTimeout(poll, (r.interval || d.interval) * 1000); return; }
+        const el = $('#gh-wait'); if (el) el.textContent = r.state === 'verlopen' ? 'De code is verlopen. Probeer opnieuw.' : r.state === 'geweigerd' ? 'Inloggen is geweigerd op GitHub.' : (r.error || 'Er ging iets mis.');
+      };
+      devicePoll = setTimeout(poll, d.interval * 1000);
+    });
+  } catch (e) { fail(e); }
+}
 
 // ---------- instellingen ----------
 const THEME_INFO = {
@@ -1041,6 +1106,7 @@ async function openSettings() {
         <label class="toggle-row"><input type="checkbox" data-feature="aiButtons" ${f.aiButtons !== false ? 'checked' : ''}><div><b>AI-knoppen</b><span>“AI-vragen genereren” en “Genereer ruwe versie”. Uit = alleen Kopieer prompt.</span></div></label>
       </div>
       <div class="panel"><h2>GitHub</h2>
+        <div class="toggle-row"><span style="flex:1"><b style="color:var(--ink)">Inloggen bij GitHub</b><span id="gh-line">Laden…</span></span><button class="btn small" id="gh-manage">Beheren</button></div>
         <label class="toggle-row"><input type="checkbox" id="set-autosync" ${st.autoSync ? 'checked' : ''}><div><b>Automatisch uploaden</b><span>Elke wijziging gaat binnen een paar seconden naar GitHub.</span></div></label>
         <label class="toggle-row"><span style="flex:1"><b style="color:var(--ink)">Elke zoveel minuten ophalen en uploaden</b>0 = uit. Handig als je ook op een ander apparaat schrijft.</span><input type="number" min="0" max="1440" class="inline-num" id="set-interval" value="${st.autoSyncMinutes ?? 10}"></label>
       </div>
@@ -1061,6 +1127,8 @@ async function openSettings() {
   main.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => saveSettings({ theme: b.dataset.setTheme }, true)));
   main.querySelectorAll('[data-feature]').forEach(c => c.addEventListener('change', () => saveSettings({ features: { [c.dataset.feature]: c.checked } })));
   $('#set-autosync').addEventListener('change', e => saveSettings({ autoSync: e.target.checked }));
+  $('#gh-manage').addEventListener('click', openGitHubLogin);
+  api('GET', '/api/github').then(g => { const el = $('#gh-line'); if (el) el.textContent = g.loggedIn ? `Ingelogd als ${g.login}.` : 'Niet ingelogd in de app; uploaden gebruikt dan de inlog van je computer (als die er is).'; }).catch(() => {});
   $('#set-interval').addEventListener('change', e => saveSettings({ autoSyncMinutes: Number(e.target.value) }));
   main.querySelectorAll('[data-set-ai]').forEach(b => b.addEventListener('click', () => {
     const patch = { model: $('#set-model').value };

@@ -10,6 +10,7 @@ const { Git } = require('./lib/git');
 const ai = require('./lib/ai');
 const { Updater } = require('./lib/updater');
 const { markdownToDocx, markdownToText } = require('./lib/docx');
+const { GitHubAuth } = require('./lib/github');
 
 const cfg = loadConfig();
 // Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
@@ -19,6 +20,8 @@ let markReady;
 const ready = new Promise(r => (markReady = r));
 const git = new Git(cfg.dataDir);
 const updater = new Updater(cfg.appDir);
+const github = new GitHubAuth(cfg.appDir, cfg);
+git.netArgs = () => github.gitArgs();
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
@@ -268,6 +271,26 @@ route('PUT', '/api/settings', async (p, body) => {
   applySyncSettings();
   return publicSettings();
 });
+
+// ---------- inloggen bij GitHub ----------
+route('GET', '/api/github', async () => ({ ...github.status(), remote: (await git.remoteUrl()) || null }));
+route('POST', '/api/github/token', async (p, body) => {
+  const token = String(body.token || '').trim();
+  if (!/^(github_pat_|ghp_|gho_)[A-Za-z0-9_]{20,}$/.test(token)) throw Object.assign(new Error('Dit lijkt geen GitHub-token. Het begint meestal met github_pat_.'), { status: 400 });
+  const login = await github.verify(token);
+  const repo = await github.checkRepo(token, await git.remoteUrl());
+  if (repo && !repo.ok) throw Object.assign(new Error(repo.message), { status: 400 });
+  github.save(token, login, 'token');
+  git.lastSyncError = null; git.scheduleSync(500);
+  return { ...github.status(), repo: repo?.repo || null };
+});
+route('POST', '/api/github/device', async () => github.deviceStart());
+route('POST', '/api/github/device/poll', async () => {
+  const r = await github.devicePoll();
+  if (r.state === 'klaar') { git.lastSyncError = null; git.scheduleSync(500); }
+  return r;
+});
+route('DELETE', '/api/github', async () => { github.logout(); return github.status(); });
 
 // ---------- templatebibliotheek ----------
 route('GET', '/api/templates', async () => store.listTemplates());

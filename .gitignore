@@ -1,6 +1,7 @@
 # Persoonlijke instellingen en geheimen: NOOIT committen
 config.json
 instellingen.json
+github.json
 secret.key
 *.key
 
