@@ -51,6 +51,12 @@ je hoeft nooit meer iets opnieuw te koppelen.
 3. Maak je instellingen: `cp config.example.json config.json` en pas ze aan (zie [hoofdstuk 3](#3-instellingen-configjson)).
 4. Start de app: dubbelklik **`start.command`**, of `npm start` in de terminal. De browser opent http://localhost:4173.
 
+5. **Als app op je Mac:** dubbelklik **`Mac-app-maken.command`** (of `bash tools/maak-mac-app.sh`). Dan staat
+   *Leerjournaal* in je map Apps; sleep hem naar je Dock. Klik je erop, dan start hij zelf de server (als die nog niet
+   draait) en opent Leerjournaal in een eigen venster (met Chrome, Edge of Brave zonder tabbladen, anders in je
+   standaardbrowser). Draait de server straks op je Mac Mini, maak de app dan opnieuw met dat adres:
+   `bash tools/maak-mac-app.sh https://mini.tailXXXX.ts.net`; dan opent hij alleen dat adres.
+
 > **Eerste start:** staat er nog geen sleutel op de plek van `keyFile`, dan maakt de app een nieuwe.
 > **Maak daar meteen een back-up van** (bijvoorbeeld in je wachtwoordmanager). Zonder sleutel zijn je gedachten
 > voorgoed onleesbaar. Had je al een vorige versie? Lees dan eerst [hoofdstuk 5](#5-sleutels).
