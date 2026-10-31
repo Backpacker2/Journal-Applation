@@ -290,3 +290,41 @@ mark { background: rgba(224, 166, 69, 0.35); color: inherit; border-radius: 3px;
 .sprint-tag { color: var(--accent); font-weight: 700; }
 select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
 @media (max-width: 760px) { .doc-row.all { grid-template-columns: 1fr auto; } .doc-row.all .doc-space { display: none; } }
+
+/* ---------- kanban ---------- */
+.board-wrap { display: flex; flex-direction: column; gap: 14px; }
+.notice.subtle { background: var(--accent-soft); color: var(--muted); }
+.board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
+.col { background: var(--card-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.col.drop { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.col header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; padding: 2px 4px; }
+.col header .count { color: var(--muted); font-weight: 600; font-size: 12px; }
+.col-cards { display: flex; flex-direction: column; gap: 8px; min-height: 8px; }
+.kcard { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: grab; display: flex; flex-direction: column; gap: 4px; }
+.kcard:hover { border-color: var(--accent); }
+.kcard.dragging { opacity: .4; }
+.kcard.editing { cursor: default; gap: 8px; border-color: var(--accent); }
+.k-title-view { font-weight: 600; font-size: 13.5px; }
+.k-desc-view { color: var(--muted); font-size: 12.5px; white-space: pre-wrap; max-height: 4.6em; overflow: hidden; }
+.k-title, .k-desc, .col-add input, .fb-qedit input, .fb-qedit textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 8px 10px; }
+.k-desc { min-height: 70px; resize: vertical; }
+.col-add { display: flex; gap: 6px; }
+.col-add input { padding: 6px 8px; font-size: 13px; }
+/* ---------- feedback ---------- */
+.fb-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.fb-head .link { font-size: 12px; }
+.fb-sec { display: flex; flex-direction: column; gap: 4px; }
+.fb-sec.learned { background: var(--green-soft); border-radius: 10px; padding: 10px 12px; }
+.lbl { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.lbl-strong { font-size: 12px; font-weight: 700; color: var(--muted); }
+.fb-q { background: var(--card-2); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--accent-soft); color: var(--accent); border: 0; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
+.edit-area.tall { min-height: 120px; }
+.fb-qs, .fb-links { display: flex; flex-direction: column; gap: 8px; }
+.fb-qedit { display: flex; flex-direction: column; gap: 6px; background: var(--card-2); border-radius: 10px; padding: 10px; }
+.fb-qedit .link { align-self: flex-end; }
+.link-grid { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.check input { accent-color: var(--accent); }
+@media (max-width: 760px) { .board { grid-template-columns: repeat(4, 78vw); } }

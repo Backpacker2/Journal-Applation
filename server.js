@@ -167,12 +167,12 @@ route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }) => 
 });
 
 route('POST', '/api/spaces/:type/:slug/prompt', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body);
+  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : []);
   return { prompt: `${p.system}\n\n---\n\n${p.user}`, count: p.count };
 });
 
 route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body);
+  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : []);
   if (!p.count) throw Object.assign(new Error('Er zijn geen gedachten in deze periode.'), { status: 400 });
   const content = await ai.callClaude(cfg, p, 8000);
   const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: cfg.model });
@@ -205,6 +205,30 @@ route('PUT', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id },
   return doc;
 });
 
+// ---------- kanban ----------
+route('GET', '/api/spaces/:type/:slug/board', async ({ type, slug }) => store.getBoard(type, slug));
+route('POST', '/api/spaces/:type/:slug/board/cards', async ({ type, slug }, body) => {
+  const c = store.addCard(type, slug, body); await git.commit(`Kaart toegevoegd: ${type}/${slug}`); return c;
+});
+route('PUT', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }, body) => {
+  const c = store.updateCard(type, slug, id, body); await git.commit(`Kaart bijgewerkt: ${type}/${slug}`); return c;
+});
+route('DELETE', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }) => {
+  const r = store.deleteCard(type, slug, id); await git.commit(`Kaart verwijderd: ${type}/${slug}`); return r;
+});
+
+// ---------- feedback ----------
+route('GET', '/api/spaces/:type/:slug/feedback', async ({ type, slug }) => store.listFeedback(type, slug));
+route('POST', '/api/spaces/:type/:slug/feedback', async ({ type, slug }, body) => {
+  const f = store.saveFeedback(type, slug, body); await git.commit(`Feedback toegevoegd: ${type}/${slug}`); return f;
+});
+route('PUT', '/api/spaces/:type/:slug/feedback/:id', async ({ type, slug, id }, body) => {
+  const f = store.saveFeedback(type, slug, body, id); await git.commit(`Feedback bijgewerkt: ${type}/${slug}`); return f;
+});
+route('DELETE', '/api/spaces/:type/:slug/feedback/:id', async ({ type, slug, id }) => {
+  const r = store.deleteFeedback(type, slug, id); await git.commit(`Feedback verwijderd: ${type}/${slug}`); return r;
+});
+
 route('POST', '/api/sync', async () => git.sync());
 
 // Een nieuwere versie van de app kan een oude, nog draaiende versie netjes laten stoppen.
@@ -230,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     if (!m) continue;
     try {
       const params = Object.fromEntries(Object.entries(m.groups || {}).map(([k, v]) => [k, decodeURIComponent(v)]));
-      const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
+      const body = ['POST', 'PUT', 'DELETE'].includes(req.method) ? await readBody(req) : {};
       return send(res, 200, await r.handler(params, body, url));
     } catch (e) {
       if (!e.status) console.error(e);

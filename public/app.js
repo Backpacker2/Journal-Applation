@@ -174,15 +174,19 @@ function render() {
         <button class="tab ${state.view === 'gedachten' ? 'active' : ''}" data-view="gedachten">Gedachten</button>
         <button class="tab ${state.view === 'documenten' ? 'active' : ''}" data-view="documenten">Documenten</button>
         <button class="tab ${state.view === 'template' ? 'active' : ''}" data-view="template">Template</button>
-        ${isProject ? `<button class="tab" disabled title="Komt in fase 2">Kanban<span class="soon">binnenkort</span></button>
-        <button class="tab" disabled title="Komt in fase 3">Feedback<span class="soon">binnenkort</span></button>` : ''}
+        ${isProject && feature('kanban') ? `<button class="tab ${state.view === 'kanban' ? 'active' : ''}" data-view="kanban">Kanban</button>` : ''}
+        ${isProject && feature('feedback') ? `<button class="tab ${state.view === 'feedback' ? 'active' : ''}" data-view="feedback">Feedback</button>` : ''}
       </div>
     </div>
     <div id="view"></div>`;
   if (state.view === 'gedachten') renderThread();
   if (state.view === 'documenten') renderDocs();
   if (state.view === 'template') renderTemplate();
+  if (state.view === 'kanban') renderBoard();
+  if (state.view === 'feedback') renderFeedback();
 }
+// Functies die in Instellingen aan of uit kunnen (standaard aan).
+const feature = name => state.settings?.features?.[name] !== false;
 
 $('#main').addEventListener('click', async e => {
   const card = state.selecting && e.target.closest('.card[data-sel]');
@@ -195,7 +199,7 @@ $('#main').addEventListener('click', async e => {
   }
   const t = e.target.closest('[data-view],[data-action]');
   if (!t) return;
-  if (t.dataset.view) { state.view = t.dataset.view; state.openDoc = null; state.docEdit = false; return render(); }
+  if (t.dataset.view) { state.view = t.dataset.view; state.openDoc = null; state.docEdit = false; state.fbEdit = null; state.cardEdit = null; return render(); }
   const a = t.dataset.action;
   try {
     if (a === 'add-key') return addKey(t);
@@ -229,6 +233,19 @@ $('#main').addEventListener('click', async e => {
     if (a === 'save-doc') await saveDoc(t.dataset.as);
     if (a === 'dl') await downloadDoc(t.dataset.id, t.dataset.format, t.dataset.type, t.dataset.slug);
     if (a === 'open-hit') return openHit(t.dataset);
+    if (a === 'card-add') return addCard(t.dataset.column);
+    if (a === 'card-edit') { state.cardEdit = t.dataset.id; return drawBoard(); }
+    if (a === 'card-cancel') { state.cardEdit = null; return drawBoard(); }
+    if (a === 'card-save') return saveCard(t.dataset.id);
+    if (a === 'card-del') return deleteCard(t.dataset.id);
+    if (a === 'fb-new') { state.fbEdit = 'new'; return drawFeedback(); }
+    if (a === 'fb-edit') { state.fbEdit = t.dataset.id; return drawFeedback(); }
+    if (a === 'fb-cancel') { state.fbEdit = null; return drawFeedback(); }
+    if (a === 'fb-save') return saveFeedback();
+    if (a === 'fb-del') return deleteFeedback(t.dataset.id);
+    if (a === 'fb-addq') { collectFeedbackForm(); state.fbDraft.questions.push({ q: '', a: '' }); return drawFeedback(); }
+    if (a === 'fb-delq') { collectFeedbackForm(); state.fbDraft.questions.splice(Number(t.dataset.i), 1); return drawFeedback(); }
+    if (a === 'open-link') return openLink(t.dataset);
     if (a === 'docs-filter') { state.docsFilter = t.dataset.filter; return renderAllDocs(); }
     if (a === 'sprint-add') return addSprint();
     if (a === 'sprint-next') return nextSprint();
@@ -628,6 +645,181 @@ function renderTemplate() {
       <textarea class="doc-editor template-editor" id="template-input">${esc(state.current.meta.template || '')}</textarea>
       <div class="row-end"><button class="btn ghost" data-action="reset-template">Standaardtemplate</button><button class="btn primary" data-action="save-template">Opslaan</button></div>
     </div></div></div>`;
+}
+
+// ---------- kanban ----------
+async function renderBoard() {
+  $('#view').outerHTML = `<div id="view" class="page"><div class="board-wrap" id="board"><div class="hint">Laden…</div></div></div>`;
+  try { state.board = await api('GET', `${base()}/board`); drawBoard(); } catch (e) { fail(e); }
+}
+
+function drawBoard() {
+  const b = state.board, el = $('#board'); if (!b || !el) return;
+  const colOpts = cur => b.columns.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  el.innerHTML = `
+    <div class="notice subtle">Lokaal bord, versleuteld opgeslagen. Koppelen met Trello of Jira volgt zodra je hebt gekozen welke je groepsproject gebruikt (issue #5).</div>
+    <div class="board">${b.columns.map(col => {
+      const cards = b.cards.filter(c => c.column === col.id);
+      return `<section class="col" data-col="${col.id}">
+        <header><span>${esc(col.name)}</span><span class="count">${cards.length}</span></header>
+        <div class="col-cards">
+          ${cards.map(c => state.cardEdit === c.id ? `
+            <div class="kcard editing">
+              <input class="k-title" id="kt-${c.id}" value="${esc(c.title)}">
+              <textarea class="k-desc" id="kd-${c.id}" placeholder="Beschrijving (optioneel)">${esc(c.description || '')}</textarea>
+              <label class="field">Kolom<select id="kc-${c.id}">${colOpts(c.column)}</select></label>
+              <div class="row-end"><button class="link danger" data-action="card-del" data-id="${c.id}">Verwijder</button><span class="spacer-h"></span>
+                <button class="btn small ghost" data-action="card-cancel">Annuleer</button><button class="btn small primary" data-action="card-save" data-id="${c.id}">Opslaan</button></div>
+            </div>` : `
+            <div class="kcard" draggable="true" data-card="${c.id}" data-action="card-edit" data-id="${c.id}">
+              <div class="k-title-view">${esc(c.title)}</div>
+              ${c.description ? `<div class="k-desc-view">${esc(c.description)}</div>` : ''}
+            </div>`).join('')}
+        </div>
+        <div class="col-add"><input placeholder="+ Kaart toevoegen" data-add="${col.id}"><button class="btn small" data-action="card-add" data-column="${col.id}">Voeg toe</button></div>
+      </section>`;
+    }).join('')}</div>`;
+  el.querySelectorAll('[data-add]').forEach(inp => inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); addCard(inp.dataset.add).catch(fail); } }));
+  // Slepen tussen kolommen (computer). Op een telefoon kies je de kolom in het bewerkscherm.
+  el.querySelectorAll('.kcard[draggable]').forEach(card => {
+    card.addEventListener('dragstart', ev => { ev.dataTransfer.setData('text/plain', card.dataset.card); card.classList.add('dragging'); });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+  el.querySelectorAll('.col').forEach(col => {
+    col.addEventListener('dragover', ev => { ev.preventDefault(); col.classList.add('drop'); });
+    col.addEventListener('dragleave', ev => { if (!col.contains(ev.relatedTarget)) col.classList.remove('drop'); });
+    col.addEventListener('drop', async ev => {
+      ev.preventDefault(); col.classList.remove('drop');
+      const id = ev.dataTransfer.getData('text/plain'); if (!id) return;
+      const target = ev.target.closest('.kcard[data-card]');
+      const before = target && target.dataset.card !== id ? state.board.cards.find(c => c.id === target.dataset.card) : null;
+      const inCol = state.board.cards.filter(c => c.column === col.dataset.col && c.id !== id);
+      const order = before ? before.order - 0.5 : Math.max(0, ...inCol.map(c => c.order)) + 1;
+      await moveCard(id, col.dataset.col, order).catch(fail);
+    });
+  });
+}
+
+async function addCard(column) {
+  const inp = $(`[data-add="${column}"]`); const title = inp.value.trim();
+  if (!title) return inp.focus();
+  const card = await api('POST', `${base()}/board/cards`, { title, column });
+  state.board.cards.push(card); drawBoard(); $(`[data-add="${column}"]`).focus();
+}
+async function moveCard(id, column, order) {
+  await api('PUT', `${base()}/board/cards/${id}`, { column, order });
+  state.board = await api('GET', `${base()}/board`); drawBoard();
+}
+async function saveCard(id) {
+  await api('PUT', `${base()}/board/cards/${id}`, { title: $('#kt-' + id).value, description: $('#kd-' + id).value, column: $('#kc-' + id).value });
+  state.cardEdit = null; state.board = await api('GET', `${base()}/board`); drawBoard(); toast('Kaart opgeslagen');
+}
+async function deleteCard(id) {
+  if (!confirm('Deze kaart verwijderen?')) return;
+  await api('DELETE', `${base()}/board/cards/${id}`);
+  state.cardEdit = null; state.board.cards = state.board.cards.filter(c => c.id !== id); drawBoard();
+}
+
+// ---------- feedback ----------
+async function renderFeedback() {
+  $('#view').outerHTML = `<div id="view" class="page"><div class="page-inner" id="feedback"><div class="hint">Laden…</div></div></div>`;
+  try {
+    const [items, docs, board] = await Promise.all([
+      api('GET', `${base()}/feedback`), api('GET', `${base()}/documents`), api('GET', `${base()}/board`)
+    ]);
+    state.feedback = items; state.fbDocs = docs; state.board = board;
+    drawFeedback();
+  } catch (e) { fail(e); }
+}
+
+function linkLabel(l) {
+  if (l.kind === 'document') return (state.fbDocs || []).find(d => d.id === l.id)?.title || l.label || 'document';
+  return (state.board?.cards || []).find(c => c.id === l.id)?.title || l.label || 'kaart';
+}
+
+function drawFeedback() {
+  const el = $('#feedback'); if (!el) return;
+  if (state.fbEdit) return drawFeedbackForm(el);
+  const items = state.feedback || [];
+  el.innerHTML = `
+    <div class="form-row" style="justify-content:space-between">
+      <div class="sub">Feedback van docenten of anderen. Je antwoorden en wat je ervan leerde gaan mee in je documenten van die periode.</div>
+      <button class="btn primary" data-action="fb-new">+ Feedback toevoegen</button>
+    </div>
+    ${items.length ? items.map(f => `
+      <div class="panel fb">
+        <div class="fb-head"><h2>${esc(f.title)}</h2><span class="doc-date">${new Date(f.date + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}${f.from ? ` · van ${esc(f.from)}` : ''}</span>
+          <span class="spacer-h"></span><button class="link" data-action="fb-edit" data-id="${f.id}">Bewerk</button><button class="link danger" data-action="fb-del" data-id="${f.id}">Verwijder</button></div>
+        ${f.links?.length ? `<div class="chips">${f.links.map(l => `<button class="chip" data-action="open-link" data-kind="${l.kind}" data-id="${l.id}">${l.kind === 'document' ? '▤' : '▦'} ${esc(linkLabel(l))}</button>`).join('')}</div>` : ''}
+        ${f.text ? `<div class="fb-sec"><span class="lbl">Feedback</span><div class="text">${esc(f.text)}</div></div>` : ''}
+        ${(f.questions || []).map(q => `<div class="fb-q"><div class="question">${esc(q.q)}</div><div class="answer"><span class="lbl">Mijn antwoord</span><div class="text">${esc(q.a) || '<span class="hint">Nog niet beantwoord</span>'}</div></div></div>`).join('')}
+        ${f.learned ? `<div class="fb-sec learned"><span class="lbl">Wat ik heb geleerd</span><div class="text">${esc(f.learned)}</div></div>` : ''}
+      </div>`).join('') : '<div class="panel"><div class="hint">Nog geen feedback. Klik op “Feedback toevoegen”.</div></div>'}`;
+}
+
+function drawFeedbackForm(el) {
+  const src = state.fbEdit === 'new' ? null : (state.feedback || []).find(f => f.id === state.fbEdit);
+  if (!state.fbDraft || state.fbDraft.for !== state.fbEdit) {
+    state.fbDraft = { for: state.fbEdit, title: src?.title || '', from: src?.from || '', date: src?.date || isoDay(new Date()),
+      text: src?.text || '', learned: src?.learned || '', questions: (src?.questions || []).map(q => ({ ...q })),
+      links: (src?.links || []).map(l => ({ ...l })) };
+  }
+  const d = state.fbDraft;
+  const linked = (kind, id) => d.links.some(l => l.kind === kind && l.id === id);
+  const docs = state.fbDocs || [], cards = state.board?.cards || [];
+  el.innerHTML = `<div class="panel">
+    <h2>${src ? 'Feedback bewerken' : 'Nieuwe feedback'}</h2>
+    <div class="form-row">
+      <label class="field grow">Titel<input id="fb-title" value="${esc(d.title)}" placeholder="Bijvoorbeeld: Gesprek met docent"></label>
+      <label class="field">Van wie<input id="fb-from" value="${esc(d.from)}" placeholder="Docent, klant, …"></label>
+      <label class="field">Datum<input type="date" id="fb-date" value="${d.date}"></label>
+    </div>
+    <label class="field grow">Feedback<textarea class="edit-area tall" id="fb-text" placeholder="Plak of typ de feedback, bijvoorbeeld uit je transcriptie">${esc(d.text)}</textarea></label>
+    <div class="fb-qs">
+      <span class="lbl-strong">Vragen in de feedback</span>
+      ${d.questions.map((q, i) => `<div class="fb-qedit">
+        <input data-q="${i}" value="${esc(q.q)}" placeholder="Vraag">
+        <textarea data-a="${i}" placeholder="Mijn antwoord">${esc(q.a)}</textarea>
+        <button class="link danger" data-action="fb-delq" data-i="${i}">Vraag weghalen</button></div>`).join('')}
+      <button class="btn small ghost" data-action="fb-addq">+ Vraag toevoegen</button>
+    </div>
+    <label class="field grow">Wat ik heb geleerd<textarea class="edit-area" id="fb-learned">${esc(d.learned)}</textarea></label>
+    <div class="fb-links">
+      <span class="lbl-strong">Koppelen aan</span>
+      ${docs.length || cards.length ? `<div class="link-grid">
+        ${docs.map(x => `<label class="check"><input type="checkbox" data-link="document" value="${x.id}" ${linked('document', x.id) ? 'checked' : ''}> ▤ ${esc(x.title)} <span class="hint">${x.kind === 'eind' ? 'eind' : 'ruw'}</span></label>`).join('')}
+        ${cards.map(x => `<label class="check"><input type="checkbox" data-link="kaart" value="${x.id}" ${linked('kaart', x.id) ? 'checked' : ''}> ▦ ${esc(x.title)}</label>`).join('')}
+      </div>` : '<div class="hint">Nog geen documenten of kaarten in dit project.</div>'}
+    </div>
+    <div class="row-end"><button class="btn ghost" data-action="fb-cancel">Annuleer</button><button class="btn primary" data-action="fb-save">Opslaan</button></div>
+  </div>`;
+}
+
+function collectFeedbackForm() {
+  const d = state.fbDraft; if (!d) return;
+  d.title = $('#fb-title').value; d.from = $('#fb-from').value; d.date = $('#fb-date').value;
+  d.text = $('#fb-text').value; d.learned = $('#fb-learned').value;
+  d.questions = d.questions.map((q, i) => ({ q: $(`[data-q="${i}"]`)?.value ?? q.q, a: $(`[data-a="${i}"]`)?.value ?? q.a }));
+  d.links = [...document.querySelectorAll('[data-link]:checked')].map(c => ({ kind: c.dataset.link, id: c.value, label: c.closest('label').textContent.trim() }));
+}
+
+async function saveFeedback() {
+  collectFeedbackForm();
+  const d = state.fbDraft, body = { title: d.title, from: d.from, date: d.date, text: d.text, learned: d.learned, questions: d.questions, links: d.links };
+  const saved = state.fbEdit === 'new' ? await api('POST', `${base()}/feedback`, body) : await api('PUT', `${base()}/feedback/${state.fbEdit}`, body);
+  state.fbEdit = null; state.fbDraft = null;
+  state.feedback = await api('GET', `${base()}/feedback`); drawFeedback(); toast(`Feedback “${saved.title}” opgeslagen`);
+}
+
+async function deleteFeedback(id) {
+  if (!confirm('Deze feedback verwijderen?')) return;
+  await api('DELETE', `${base()}/feedback/${id}`);
+  state.feedback = state.feedback.filter(f => f.id !== id); drawFeedback();
+}
+
+async function openLink(d) {
+  if (d.kind === 'document') { state.view = 'documenten'; render(); state.openDoc = await api('GET', `${base()}/documents/${d.id}`); return renderDocs(); }
+  state.view = 'kanban'; state.cardEdit = d.id; render();
 }
 
 // ---------- zoeken ----------

@@ -117,6 +117,14 @@ chats, te filteren en direct te downloaden.
 **+ Volgende sprint** meteen de volgende van dezelfde lengte. Bij het genereren kies je een sprint en worden titel en
 datums vanzelf ingevuld. In de tijdlijn zie je waar een sprint begint.
 
+**Kanban (projecten).** Tabblad *Kanban* met de kolommen Backlog, Mee bezig, Waiting for review en Done. Typ een
+kaart onderaan een kolom en druk op Enter. Sleep kaarten tussen kolommen, of klik op een kaart om titel, beschrijving en
+kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`). Koppelen met Trello of Jira volgt later.
+
+**Feedback (projecten).** Tabblad *Feedback*: leg feedback vast (titel, van wie, datum, de feedback zelf), beantwoord de
+vragen die erin stonden, schrijf op wat je ervan leerde en koppel het aan documenten of kaarten. Feedback uit de gekozen
+periode gaat mee naar het document; de AI gebruikt de feedback zelf alleen als context, jouw antwoorden en lessen als inhoud.
+
 **Vragen.**
 - **+ Eigen vraag toevoegen**: typ een vraag aan jezelf; het antwoord geef je in het kaartje.
 - **✦ AI-vragen genereren**: de AI leest je gedachten en stelt drie open vragen. Hij geeft zelf geen antwoorden.
