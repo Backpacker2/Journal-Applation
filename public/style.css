@@ -446,3 +446,11 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .board.compact .kcard:not(.editing) { padding: 7px 10px; gap: 2px; }
 .board.compact .k-title-view { font-size: 13px; }
 @media (max-width: 760px) { .board > .col { flex-basis: 82vw; max-height: none; } .board > .col .col-cards { overflow: visible; } }
+
+/* ---------- documentversies ---------- */
+.doc-versions { margin: -4px 0 6px 14px; }
+.doc-versions > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); padding: 2px 0 6px; }
+.doc-row.version { padding-left: 10px; border-left: 2px solid var(--line); }
+.version-strip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 4px 0 8px; }
+.vchip { border: 1px solid var(--line); background: var(--card-2); color: var(--muted); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.vchip.on { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }

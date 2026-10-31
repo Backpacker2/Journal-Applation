@@ -172,7 +172,9 @@ verslag. Met *Standaardtemplate* zet je het origineel terug.
 **Documenten.** In het tabblad *Documenten*:
 1. Kies een titel en een periode (standaard de laatste twee weken).
 2. **Genereer ruwe versie** (met API-sleutel), of **Kopieer prompt** → plak in Claude → **Plak resultaat**.
-3. Open het document, klik **Bewerken** en sla op als **eindversie**.
+3. Open het document, klik **Bewerken** en sla op als **eindversie**. Elke keer opslaan maakt een **nieuwe versie**; de
+   vorige blijft bestaan. In de lijst klap je *N versies* open, en bovenaan een geopend document zie je alle versies met
+   datum en tijd om snel terug te kijken.
 4. Bovenaan kies je hoe je het bekijkt: **Preview** (opgemaakt), **md** (de Markdown-tekst) of **txt** (platte tekst).
 5. **Download** als `.md`, `.txt` of `.docx` (Word) met de knoppen bovenaan, of direct vanuit de lijst met documenten.
 

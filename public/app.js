@@ -53,6 +53,15 @@ function dayLabel(key) {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const subLine = c => `${plural(c.entries.filter(e => e.kind === 'gedachte').length, 'gedachte', 'gedachten')} · ${plural(c.entries.filter(e => e.kind === 'vraag').length, 'vraag', 'vragen')} · elke gedachte is een versleuteld .txt-bestand met datum en tijd`;
 const isoDay = d => d.toLocaleDateString('sv-SE');
+function fmtDateTimeFull(iso) {
+  return new Date(iso).toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+// Groepeert documenten per reeks: [nieuwste versie, alle versies (nieuwste eerst)].
+function docSeries(docs) {
+  const groups = new Map();
+  for (const d of docs) { const k = d.seriesId || d.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+  return [...groups.values()].map(v => [v[0], v]);
+}
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
@@ -558,8 +567,8 @@ async function renderDocs() {
   view.outerHTML = `<div id="view" class="page"><div class="page-inner" id="docs-inner"><div class="hint">Laden…</div></div></div>`;
   const inner = $('#docs-inner');
   try {
-    if (state.openDoc) return renderOpenDoc(inner);
     state.docs = await api('GET', `${base()}/documents`);
+    if (state.openDoc) return renderOpenDoc(inner);
     const today = new Date(); const twoWeeks = new Date(Date.now() - 13 * 864e5);
     const ai = state.status?.aiEnabled;
     const isProject = state.current.type === 'projecten';
@@ -588,13 +597,19 @@ async function renderDocs() {
       ${isProject ? sprintsPanel(sprints, todayKey) : ''}
       <div class="panel">
         <h2>Documenten</h2>
-        ${state.docs.length ? `<div class="doc-list">${state.docs.map(d => `
+        ${state.docs.length ? `<div class="doc-list">${docSeries(state.docs).map(([latest, versions]) => `
           <div class="doc-row">
-            <button class="doc-title link-like" data-action="open-doc" data-id="${d.id}">${esc(d.title)}</button>
-            <span><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
-            <span class="doc-date">${d.createdAt ? fmtDateTime(d.createdAt) : ''}${d.from ? ` · ${d.from.slice(5)} t/m ${(d.to || '').slice(5)}` : ''}</span>
-            ${dlLinks(d.id)}
-          </div>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
+            <button class="doc-title link-like" data-action="open-doc" data-id="${latest.id}">${esc(latest.title)}</button>
+            <span><span class="badge ${latest.kind}">${latest.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+            <span class="doc-date">${latest.createdAt ? fmtDateTime(latest.createdAt) : ''}${latest.from ? ` · ${latest.from.slice(5)} t/m ${(latest.to || '').slice(5)}` : ''}</span>
+            ${dlLinks(latest.id)}
+          </div>
+          ${versions.length > 1 ? `<details class="doc-versions"${state.openSeries === latest.seriesId ? ' open' : ''} data-series="${latest.seriesId}"><summary>${versions.length} versies</summary>
+            ${versions.map(v => `<div class="doc-row version">
+              <button class="link-like" data-action="open-doc" data-id="${v.id}">Versie ${v.version}</button>
+              <span><span class="badge ${v.kind}">${v.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+              <span class="doc-date">${v.createdAt ? fmtDateTimeFull(v.createdAt) : ''}</span>${dlLinks(v.id)}</div>`).join('')}
+          </details>` : ''}`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
       </div>`;
     const sel = $('#doc-sprint');
     if (sel) sel.addEventListener('change', () => {
@@ -676,7 +691,7 @@ function renderOpenDoc(inner) {
         <div class="row-end">
           <button class="btn ghost" data-action="${isNew ? 'close-doc' : 'open-doc'}" data-id="${d.id || ''}">Annuleer</button>
           ${isNew ? '<button class="btn primary" data-action="save-doc" data-as="ruw">Opslaan als ruwe versie</button>'
-            : `${d.kind === 'eind' ? '<button class="btn primary" data-action="save-doc" data-as="update">Opslaan</button>'
+            : `${d.kind === 'eind' ? '<button class="btn primary" data-action="save-doc" data-as="update">Opslaan als nieuwe versie</button>'
               : '<button class="btn primary" data-action="save-doc" data-as="eind">Opslaan als eindversie</button>'}`}
         </div>
       </div>`;
@@ -685,7 +700,8 @@ function renderOpenDoc(inner) {
   inner.innerHTML = `${header}
     <div class="panel">
       <div class="form-row" style="gap:8px"><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span>
-        <span class="hint">${fmtDateTime(d.createdAt)} · ${esc(d.generatedBy || '')}${d.from ? ` · gedachten van ${d.from} t/m ${d.to}` : ''}</span></div>
+        <span class="hint">${fmtDateTimeFull(d.createdAt)} · ${esc(d.generatedBy || '')}${d.from ? ` · gedachten van ${d.from} t/m ${d.to}` : ''}</span></div>
+      ${versionStrip(d)}
       ${state.docFormat === 'md' ? `<pre class="doc-raw">${esc(d.content)}</pre>`
         : state.docFormat === 'txt' ? '<pre class="doc-raw" id="doc-txt">Laden…</pre>'
         : `<div class="doc-view">${md(d.content)}</div>`}
@@ -696,10 +712,18 @@ function renderOpenDoc(inner) {
   }
 }
 
+// Alle versies van dit document met datum en tijd, zodat je snel een vorige versie opent.
+function versionStrip(d) {
+  const info = (state.docs || []).find(x => x.id === d.id);
+  const series = info ? (state.docs || []).filter(x => x.seriesId === info.seriesId) : [];
+  if (series.length < 2) return '';
+  return `<div class="version-strip"><span class="hint">Versies:</span>${[...series].reverse().map(v => `<button class="vchip${v.id === d.id ? ' on' : ''}" data-action="open-doc" data-id="${v.id}" title="${v.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}">v${v.version} · ${fmtDateTime(v.createdAt)}</button>`).join('')}</div>`;
+}
 async function saveDoc(as) {
   const d = state.openDoc;
   const title = $('#doc-edit-title').value, content = $('#doc-edit-content').value;
-  if (as === 'update') state.openDoc = await api('PUT', `${base()}/documents/${d.id}`, { title, content });
+  // Opslaan maakt altijd een nieuwe versie; de vorige blijft bestaan.
+  if (as === 'update') state.openDoc = await api('POST', `${base()}/documents`, { kind: 'eind', title, content, from: d.from, to: d.to, basedOn: d.id, generatedBy: 'bewerkt door mij' });
   else state.openDoc = await api('POST', `${base()}/documents`, { kind: as, title, content, from: d.from, to: d.to, basedOn: d.id || null, generatedBy: as === 'eind' ? 'bewerkt door mij' : d.generatedBy });
   state.docEdit = false; toast(as === 'eind' ? 'Eindversie opgeslagen' : 'Opgeslagen'); renderDocs();
 }
