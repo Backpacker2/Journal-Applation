@@ -12,6 +12,7 @@ const state = {
   docs: [],
   openDoc: null,
   docEdit: false,
+  docFormat: (() => { try { return localStorage.getItem('lj-docformat') || 'preview'; } catch { return 'preview'; } })(),
   status: null
 };
 
@@ -52,11 +53,17 @@ const isoDay = d => d.toLocaleDateString('sv-SE');
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
-function download(name, text) {
+// Downloadt een document als .md, .txt of .docx (de server maakt het bestand).
+async function downloadDoc(id, format) {
+  const res = await fetch(`${base()}/documents/${id}/export/${format}`, { headers: { 'x-leerjournaal': '1' } });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fout ${res.status}`);
+  const name = (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || `document.${format}`;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
-  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(await res.blob());
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+const dlLinks = id => `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}">.${f}</button>`).join(' ')}</span>`;
 
 // Minimale Markdown-weergave (koppen, lijsten, vet, cursief, citaten, alinea's)
 function md(src) {
@@ -179,7 +186,8 @@ $('#main').addEventListener('click', async e => {
     if (a === 'close-doc') { state.openDoc = null; state.docEdit = false; renderDocs(); }
     if (a === 'edit-doc') { state.docEdit = true; renderDocs(); }
     if (a === 'save-doc') await saveDoc(t.dataset.as);
-    if (a === 'download-doc') download(`${state.openDoc.id || 'document'}.md`, state.openDoc.content);
+    if (a === 'dl') await downloadDoc(t.dataset.id, t.dataset.format);
+    if (a === 'doc-format') { state.docFormat = t.dataset.format; try { localStorage.setItem('lj-docformat', state.docFormat); } catch {} renderDocs(); }
     if (a === 'save-template') { state.current.meta = await api('PUT', base(), { template: $('#template-input').value }); toast('Template opgeslagen'); }
     if (a === 'reset-template') { $('#template-input').value = state.current.defaultTemplate; toast('Standaardtemplate teruggezet. Vergeet niet op te slaan.'); }
   } catch (err) { fail(err); }
@@ -338,11 +346,12 @@ async function renderDocs() {
       <div class="panel">
         <h2>Documenten</h2>
         ${state.docs.length ? `<div class="doc-list">${state.docs.map(d => `
-          <button class="doc-row" data-action="open-doc" data-id="${d.id}">
-            <span class="doc-title">${esc(d.title)}</span>
+          <div class="doc-row">
+            <button class="doc-title link-like" data-action="open-doc" data-id="${d.id}">${esc(d.title)}</button>
             <span><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
             <span class="doc-date">${d.createdAt ? fmtDateTime(d.createdAt) : ''}${d.from ? ` · ${d.from.slice(5)} t/m ${(d.to || '').slice(5)}` : ''}</span>
-          </button>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
+            ${dlLinks(d.id)}
+          </div>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
       </div>`;
   } catch (e) { fail(e); }
 }
@@ -352,7 +361,9 @@ function renderOpenDoc(inner) {
   const header = `<div class="form-row" style="justify-content:space-between">
       <button class="btn ghost" data-action="close-doc">← Alle documenten</button>
       <div class="form-row">
-        ${state.docEdit ? '' : `<button class="btn" data-action="download-doc">Download .md</button><button class="btn" data-action="edit-doc">Bewerken</button>`}
+        ${state.docEdit ? '' : `<div class="seg">${[['preview', 'Preview'], ['md', 'md'], ['txt', 'txt']].map(([f, l]) => `<button class="${state.docFormat === f ? 'on' : ''}" data-action="doc-format" data-format="${f}">${l}</button>`).join('')}</div>
+          <div class="dl-menu"><span class="hint">Download</span>${['md', 'txt', 'docx'].map(f => `<button class="btn small" data-action="dl" data-id="${d.id}" data-format="${f}">.${f}</button>`).join('')}</div>
+          <button class="btn" data-action="edit-doc">Bewerken</button>`}
       </div></div>`;
   if (state.docEdit) {
     const isNew = !d.id;
@@ -374,8 +385,14 @@ function renderOpenDoc(inner) {
     <div class="panel">
       <div class="form-row" style="gap:8px"><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span>
         <span class="hint">${fmtDateTime(d.createdAt)} · ${esc(d.generatedBy || '')}${d.from ? ` · gedachten van ${d.from} t/m ${d.to}` : ''}</span></div>
-      <div class="doc-view">${md(d.content)}</div>
+      ${state.docFormat === 'md' ? `<pre class="doc-raw">${esc(d.content)}</pre>`
+        : state.docFormat === 'txt' ? '<pre class="doc-raw" id="doc-txt">Laden…</pre>'
+        : `<div class="doc-view">${md(d.content)}</div>`}
     </div>`;
+  if (state.docFormat === 'txt') {
+    fetch(`${base()}/documents/${d.id}/export/txt`, { headers: { 'x-leerjournaal': '1' } })
+      .then(r => r.text()).then(t => { const el = $('#doc-txt'); if (el) el.textContent = t; }).catch(fail);
+  }
 }
 
 async function saveDoc(as) {

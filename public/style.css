@@ -196,7 +196,7 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .field.grow { flex: 1; }
 .field.grow input { width: 100%; }
 .doc-list { display: flex; flex-direction: column; }
-.doc-row { display: grid; grid-template-columns: 1fr 100px 170px; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--line); background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; color: inherit; }
+.doc-row { display: grid; grid-template-columns: 1fr 100px 170px auto; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--line); background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; color: inherit; }
 .doc-row:last-child { border-bottom: 0; }
 .doc-row:hover .doc-title { color: var(--accent); }
 .doc-title { font-weight: 600; }
@@ -219,7 +219,7 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
   .sidebar { width: 100%; height: auto; max-height: 40vh; }
   main { height: auto; flex: 1; }
   .thread, .page, .composer, .header-wrap { padding-left: 16px; padding-right: 16px; }
-  .doc-row { grid-template-columns: 1fr 80px; }
+  .doc-row { grid-template-columns: 1fr auto; row-gap: 4px; }
   .doc-row .doc-date { display: none; }
 }
 
@@ -234,3 +234,14 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .notice.ok { background: var(--green-soft); color: var(--green); }
 .notice.bad { background: rgba(226, 109, 109, 0.14); color: var(--red); }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- documentweergave en downloads ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: var(--card); border: 0; color: var(--muted); padding: 7px 12px; font-size: 12px; font-weight: 600; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.dl-menu { display: inline-flex; align-items: center; gap: 6px; }
+.dl-links { display: inline-flex; gap: 6px; font-size: 12px; color: var(--faint); white-space: nowrap; }
+.link-like { background: none; border: 0; padding: 0; text-align: left; color: var(--ink); font-weight: 600; }
+.link-like:hover { color: var(--accent); }
+.doc-raw { white-space: pre-wrap; word-wrap: break-word; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0; }

@@ -28,7 +28,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 - **Gedachten** opslaan met Enter, **reageren** op een eerdere gedachte (zoals in WhatsApp) en gedachten **bewerken**
 - **Eigen vragen** stellen en beantwoorden, en **AI-vragen** laten genereren (de AI stelt alleen vragen, nooit antwoorden)
 - **Template per project of chat**: bepaalt de kopjes, taal en toon van het document
-- **Documenten**: een ruwe versie laten maken over een gekozen periode, bewerken, opslaan als eindversie, downloaden als `.md`
+- **Documenten**: een ruwe versie laten maken over een gekozen periode, bewerken, opslaan als eindversie; bekijken als preview, md of txt en downloaden als `.md`, `.txt` of Word (`.docx`)
 - **Werkt ook zonder API-sleutel**: "Kopieer prompt", plakken in Claude, en het resultaat terugzetten met "Plak resultaat"
 - **Versleuteling** van alle inhoud én van de namen van je projecten en chats (AES-256-GCM)
 - **Meerdere sleutels**: oude sleutels toevoegen, zodat je data van vorige versies leesbaar blijft
@@ -110,7 +110,9 @@ verslag. Met *Standaardtemplate* zet je het origineel terug.
 **Documenten.** In het tabblad *Documenten*:
 1. Kies een titel en een periode (standaard de laatste twee weken).
 2. **Genereer ruwe versie** (met API-sleutel), of **Kopieer prompt** → plak in Claude → **Plak resultaat**.
-3. Open het document, klik **Bewerken** en sla op als **eindversie**. **Download .md** om het te exporteren.
+3. Open het document, klik **Bewerken** en sla op als **eindversie**.
+4. Bovenaan kies je hoe je het bekijkt: **Preview** (opgemaakt), **md** (de Markdown-tekst) of **txt** (platte tekst).
+5. **Download** als `.md`, `.txt` of `.docx` (Word) met de knoppen bovenaan, of direct vanuit de lijst met documenten.
 
 De AI mag alleen jouw eigen gedachten en antwoorden ordenen en verwoorden. Lees de ruwe versie altijd even na.
 

@@ -9,6 +9,7 @@ const { Store } = require('./lib/store');
 const { Git } = require('./lib/git');
 const ai = require('./lib/ai');
 const { Updater } = require('./lib/updater');
+const { markdownToDocx, markdownToText } = require('./lib/docx');
 
 const cfg = loadConfig();
 // Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
@@ -22,7 +23,22 @@ const updater = new Updater(cfg.appDir);
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
+// Bestandsnaam voor downloads: titel + datum, zonder vreemde tekens.
+function fileName(doc) {
+  const t = String(doc.title || 'document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document';
+  return `${t}_${(doc.createdAt || '').slice(0, 10)}${doc.kind === 'eind' ? '_eind' : doc.kind === 'ruw' ? '_ruw' : ''}`;
+}
+const file = (name, type, body) => ({ __file: true, name, type, body });
+
 function send(res, status, body) {
+  if (body && body.__file) {
+    res.writeHead(status, {
+      'content-type': body.type, 'cache-control': 'no-store',
+      'content-disposition': `attachment; filename="${body.name.replace(/"/g, '')}"`
+    });
+    return res.end(body.body);
+  }
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
 }
@@ -155,6 +171,16 @@ route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body
 
 route('GET', '/api/spaces/:type/:slug/documents', async ({ type, slug }) => store.listDocs(type, slug));
 route('GET', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id }) => store.getDoc(type, slug, id));
+
+// Een document als bestand: md (Markdown), txt (platte tekst) of docx (Word).
+route('GET', '/api/spaces/:type/:slug/documents/:id/export/:format', async ({ type, slug, id, format }) => {
+  const doc = store.getDoc(type, slug, id);
+  const name = fileName(doc);
+  if (format === 'md') return file(`${name}.md`, 'text/markdown; charset=utf-8', doc.content);
+  if (format === 'txt') return file(`${name}.txt`, 'text/plain; charset=utf-8', markdownToText(doc.content));
+  if (format === 'docx') return file(`${name}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', markdownToDocx(doc.content, doc.title));
+  throw Object.assign(new Error('Onbekend formaat'), { status: 400 });
+});
 
 route('POST', '/api/spaces/:type/:slug/documents', async ({ type, slug }, body) => {
   const doc = store.saveDoc(type, slug, body);
