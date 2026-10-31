@@ -466,3 +466,14 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .tchip.add { border-style: dashed; }
 .thread-pick { gap: 14px; flex-wrap: wrap; }
 @media (max-width: 760px) { .thread-bar { padding: 8px 12px 0; flex-wrap: nowrap; overflow-x: auto; } .tchip { flex-shrink: 0; } }
+
+/* ---------- AI-aanbieders ---------- */
+.ai-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ai-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.ai-row.active { border-color: var(--accent); background: var(--accent-soft); }
+.ai-add > summary { cursor: pointer; font-size: 13px; margin: 4px 0 10px; list-style: none; }
+.ai-add > summary::-webkit-details-marker { display: none; }
+.ai-add { display: flex; flex-direction: column; gap: 10px; }
+.ai-add > .form-row { margin-bottom: 10px; }
+.field[hidden], .ai-add [hidden] { display: none !important; }
+.toggle-row .inline-select, .select-bar .inline-select { flex: 0 0 auto; width: auto; align-self: center; }

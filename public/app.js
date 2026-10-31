@@ -668,7 +668,7 @@ async function renderDocs() {
       <div class="panel">
         <h2>Document genereren</h2>
         <div class="sub">De AI ordent alleen jouw eigen gedachten en antwoorden volgens het template van ${state.current.type === 'projecten' ? 'dit project' : 'deze chat'}. Hij voegt niets toe.</div>
-        ${ai || !feature('aiButtons') ? '' : '<div class="notice">Er is geen API-sleutel ingesteld. Gebruik "Kopieer prompt", plak die in Claude, en zet het resultaat terug via "Plak resultaat".</div>'}
+        ${ai || !feature('aiButtons') ? '' : '<div class="notice">Er is nog geen AI ingesteld (Instellingen → AI). Of gebruik "Kopieer prompt", plak die in Claude, en zet het resultaat terug via "Plak resultaat".</div>'}
         ${sprints.length ? `<div class="form-row"><label class="field grow">Periode
           <select id="doc-sprint"><option value="">Eigen periode kiezen</option>${sprints.map(x => `<option value="${x.id}" ${x.id === cur?.id ? 'selected' : ''}>${esc(x.name)} (${x.from.slice(8)}-${x.from.slice(5, 7)} t/m ${x.to.slice(8)}-${x.to.slice(5, 7)})</option>`).join('')}</select></label></div>` : ''}
         <div class="form-row">
@@ -679,7 +679,8 @@ async function renderDocs() {
         ${threadsOf().length ? `<div class="form-row thread-pick"><span class="hint">Chats:</span>
           ${[{ id: '', name: 'Algemeen' }, ...threadsOf()].map(t => `<label class="check"><input type="checkbox" class="doc-thread" value="${t.id}" checked> ${esc(t.name)}</label>`).join('')}</div>` : ''}
         <div class="form-row">
-          ${feature('aiButtons') ? `<button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>` : ''}
+          ${feature('aiButtons') ? `<button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>
+            ${(state.status?.ais || []).length > 1 ? `<select id="doc-ai" class="inline-select" title="Met welke AI">${state.status.ais.map(x => `<option value="${x.id}" ${x.id === state.status.aiActive ? 'selected' : ''}>${esc(x.label)} · ${esc(x.model)}</option>`).join('')}</select>` : ''}` : ''}
           <button class="btn" data-action="copy-prompt">Kopieer prompt</button>
           <button class="btn ghost" data-action="paste-doc">Plak resultaat</button>
           <span class="spacer-h"></span>
@@ -842,7 +843,7 @@ function docParams() {
 async function generateDoc(btn) {
   btn.disabled = true; btn.textContent = 'Bezig met schrijven… (kan een minuut duren)';
   try {
-    state.openDoc = await api('POST', `${base()}/ai/document`, docParams());
+    state.openDoc = await api('POST', `${base()}/ai/document`, { ...docParams(), ai: $('#doc-ai')?.value });
     state.docEdit = false; renderDocs();
   } catch (e) { fail(e); btn.disabled = false; btn.textContent = 'Genereer ruwe versie'; }
 }
@@ -1390,14 +1391,9 @@ async function openSettings() {
             <option value="dag-tijd" ${st.docDates === 'dag-tijd' ? 'selected' : ''}>Dag en tijd</option>
           </select></label>
       </div>
-      <div class="panel"><h2>AI</h2>
-        <div class="sub">${st.hasApiKey ? '✓ Er is een Anthropic API-sleutel ingesteld.' : 'Geen API-sleutel ingesteld: de AI-knoppen werken via Kopieer prompt.'} De sleutel blijft op deze computer.</div>
-        <div class="form-row">
-          <label class="field grow">API-sleutel<input type="password" id="set-key" placeholder="${st.hasApiKey ? '•••••••• (laat leeg om te houden)' : 'sk-ant-…'}" autocomplete="off"></label>
-          <label class="field">Model<input id="set-model" value="${esc(st.model || '')}"></label>
-          <button class="btn" data-set-ai="1">Opslaan</button>
-          ${st.hasApiKey ? '<button class="btn ghost" data-set-ai="clear">Sleutel weghalen</button>' : ''}
-        </div>
+      <div class="panel" id="ai-panel"><h2>AI</h2>
+        <div class="sub">Stel een of meer AI's in (ook meerdere sleutels). De actieve AI gebruiken de AI-knoppen; bij het genereren kun je er ook een kiezen. Sleutels blijven op deze computer. Zonder AI werkt alles via Kopieer prompt.</div>
+        <div id="ai-list"><div class="hint">Laden…</div></div>
       </div>
       <div class="panel"><h2>Meer</h2>
         <div class="form-row"><button class="btn" data-open-keys="1">Sleutels beheren</button><span class="hint">Templates beheer je in het tabblad Template van een project of chat.</span></div>
@@ -1412,13 +1408,78 @@ async function openSettings() {
   drawConnections();
   api('GET', '/api/github').then(g => { const el = $('#gh-line'); if (el) el.textContent = g.loggedIn ? `Ingelogd als ${g.login}.` : 'Niet ingelogd in de app; uploaden gebruikt dan de inlog van je computer (als die er is).'; }).catch(() => {});
   $('#set-interval').addEventListener('change', e => saveSettings({ autoSyncMinutes: Number(e.target.value) }));
-  main.querySelectorAll('[data-set-ai]').forEach(b => b.addEventListener('click', () => {
-    const patch = { model: $('#set-model').value };
-    if (b.dataset.setAi === 'clear') patch.anthropicApiKey = '';
-    else if ($('#set-key').value.trim()) patch.anthropicApiKey = $('#set-key').value.trim();
-    saveSettings(patch, true);
+  drawAiProviders();
+}
+// ---------- AI-aanbieders ----------
+async function drawAiProviders(editId = null) {
+  const el = $('#ai-list'); if (!el) return;
+  const v = await api('GET', '/api/ai').catch(e => { el.innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return null; });
+  if (!v) return;
+  const editing = editId ? v.providers.find(p => p.id === editId) : null;
+  const kindOpts = cur => Object.entries(v.kinds).map(([k, x]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
+  el.innerHTML = `
+    ${v.providers.length ? `<div class="ai-list">${v.providers.map(p => `<div class="ai-row${p.id === v.active ? ' active' : ''}">
+        <label class="check"><input type="radio" name="ai-active" value="${p.id}" ${p.id === v.active ? 'checked' : ''}> <b>${esc(p.label)}</b></label>
+        <span class="hint">${esc(p.kindLabel)} · ${esc(p.model)}${p.keyHint ? ` · sleutel ${esc(p.keyHint)}` : ''}${p.baseUrl ? ` · ${esc(p.baseUrl)}` : ''}</span>
+        <span class="spacer-h"></span>
+        <button class="link" data-ai-edit="${p.id}">Wijzig</button><button class="link danger" data-ai-del="${p.id}">Verwijder</button>
+      </div>`).join('')}</div>` : '<div class="hint">Nog geen AI ingesteld.</div>'}
+    <details class="ai-add" ${editing || !v.providers.length ? 'open' : ''}><summary class="link">${editing ? `“${esc(editing.label)}” wijzigen` : '+ AI toevoegen'}</summary>
+      <div class="form-row">
+        <label class="field">Aanbieder<select id="ai-kind" ${editing ? 'disabled' : ''}>${kindOpts(editing?.provider || 'anthropic')}</select></label>
+        <label class="field grow">Naam<input id="ai-label" placeholder="bijv. Claude school" value="${esc(editing?.label || '')}"></label>
+      </div>
+      <div class="form-row">
+        <label class="field grow" id="ai-key-wrap">API-sleutel<input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="${editing?.keyHint ? `${esc(editing.keyHint)} (leeg laten = houden)` : ''}"></label>
+        <label class="field grow" id="ai-base-wrap">Adres<input id="ai-base" placeholder="" value="${esc(editing?.baseUrl || '')}" spellcheck="false"></label>
+      </div>
+      <div class="form-row">
+        <label class="field grow">Model<input id="ai-model" list="ai-models" value="${esc(editing?.model || '')}" spellcheck="false" placeholder="klik eerst op Modellen ophalen"><datalist id="ai-models"></datalist></label>
+        <button class="btn ghost" id="ai-fetch">Modellen ophalen</button>
+        ${editing ? '<button class="btn ghost" id="ai-cancel">Annuleer</button>' : ''}
+        <button class="btn primary" id="ai-save">${editing ? 'Opslaan' : 'Toevoegen en testen'}</button>
+      </div>
+      <div class="hint" id="ai-help"></div>
+    </details>`;
+  const kindSel = $('#ai-kind');
+  const sync = () => {
+    const k = v.kinds[kindSel.value];
+    $('#ai-key-wrap').hidden = kindSel.value === 'ollama';
+    $('#ai-base-wrap').hidden = !['ollama', 'custom'].includes(kindSel.value);
+    $('#ai-base').placeholder = k.base || 'https://…/v1';
+    $('#ai-help').innerHTML = k.keyUrl ? (kindSel.value === 'ollama'
+      ? `Gratis en lokaal: installeer <a href="${k.keyUrl}" target="_blank" rel="noopener">Ollama</a>, haal een model op (bijv. <code>ollama pull llama3.2</code>) en klik op Modellen ophalen.`
+      : `Een sleutel maak je op <a href="${k.keyUrl}" target="_blank" rel="noopener">${esc(new URL(k.keyUrl).host)}</a>. Gebruik kost meestal geld per keer.`) : 'Vul het adres in van een dienst die werkt zoals de OpenAI API (eindigt meestal op /v1).';
+  };
+  kindSel.addEventListener('change', sync); sync();
+  const form = () => ({ provider: kindSel.value, label: $('#ai-label').value, apiKey: $('#ai-key').value, model: $('#ai-model').value, baseUrl: $('#ai-base').value });
+  $('#ai-fetch').addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'Ophalen…';
+    try {
+      const { models } = await api('POST', '/api/ai/models', { ...form(), id: editing?.id });
+      $('#ai-models').innerHTML = models.map(m => `<option value="${esc(m)}">`).join('');
+      if (!$('#ai-model').value && models[0]) $('#ai-model').value = models[0];
+      toast(`${models.length} modellen gevonden. Kies er een in het veld Model.`);
+    } catch (err) { fail(err); }
+    b.disabled = false; b.textContent = 'Modellen ophalen';
+  });
+  $('#ai-cancel')?.addEventListener('click', () => drawAiProviders());
+  $('#ai-save').addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true; const l = b.textContent; b.textContent = 'Testen…';
+    try {
+      if (editing) await api('PUT', `/api/ai/providers/${editing.id}`, { label: form().label, model: form().model, ...(form().apiKey ? { apiKey: form().apiKey } : {}), ...(['ollama', 'custom'].includes(editing.provider) ? { baseUrl: form().baseUrl } : {}) });
+      else await api('POST', '/api/ai/providers', form());
+      toast(editing ? 'AI bijgewerkt' : 'AI toegevoegd en getest'); await loadStatus?.(); drawAiProviders();
+    } catch (err) { fail(err); b.disabled = false; b.textContent = l; }
+  });
+  el.querySelectorAll('[name=ai-active]').forEach(r => r.addEventListener('change', async () => { await api('PUT', '/api/ai/active', { id: r.value }); toast('Actieve AI gekozen'); loadStatus?.(); drawAiProviders(); }));
+  el.querySelectorAll('[data-ai-edit]').forEach(b => b.addEventListener('click', () => drawAiProviders(b.dataset.aiEdit)));
+  el.querySelectorAll('[data-ai-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Deze AI en de sleutel verwijderen?')) return;
+    await api('DELETE', `/api/ai/providers/${b.dataset.aiDel}`); loadStatus?.(); drawAiProviders();
   }));
 }
+
 async function drawConnections() {
   const el = $('#conn-list'); if (!el) return;
   const c = await api('GET', '/api/connections').catch(e => { el.innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return null; });

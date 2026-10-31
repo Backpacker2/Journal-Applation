@@ -14,6 +14,7 @@ const { GitHubAuth } = require('./lib/github');
 const { makeAdapter } = require('./lib/connectors');
 const boardSync = require('./lib/sync');
 const { extractText } = require('./lib/extract');
+const providers = require('./lib/providers');
 
 const cfg = loadConfig();
 // Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
@@ -75,7 +76,9 @@ const route = (method, pattern, handler) => routes.push({ method, re: new RegExp
 
 route('GET', '/api/status', async () => ({
   ...(await git.status()),
-  aiEnabled: !!cfg.anthropicApiKey,
+  aiEnabled: providers.list(cfg).length > 0,
+  ais: providers.list(cfg).map(p => ({ id: p.id, label: p.label, model: p.model })),
+  aiActive: (providers.list(cfg).find(p => p.id === cfg.aiActive) || providers.list(cfg)[0])?.id || null,
   model: cfg.model,
   dataDir: cfg.dataDir,
   keyFile: cfg.keyFile,
@@ -189,7 +192,7 @@ route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }, bod
   const known = new Set((meta.threads || []).map(t => t.id));
   const thread = known.has(body.thread) ? body.thread : '';
   const entries = store.listEntries(type, slug).filter(e => !known.size || (known.has(e.thread) ? e.thread : '') === thread);
-  const text = await ai.callClaude(cfg, ai.buildQuestionPrompt(meta, entries), 600);
+  const text = await providers.complete(providers.pick(cfg, body.ai), ai.buildQuestionPrompt(meta, entries), 600);
   const questions = ai.parseQuestions(text);
   if (!questions.length) throw Object.assign(new Error('De AI gaf geen bruikbare vragen terug.'), { status: 502 });
   const created = questions.map(q => store.addEntry(type, slug, { kind: 'vraag', question: q, source: 'ai', thread }));
@@ -205,8 +208,9 @@ route('POST', '/api/spaces/:type/:slug/prompt', async ({ type, slug }, body) => 
 route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body) => {
   const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : [], cfg.docDates);
   if (!p.count) throw Object.assign(new Error('Er zijn geen gedachten in deze periode.'), { status: 400 });
-  const content = await ai.callClaude(cfg, p, 8000);
-  const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: cfg.model });
+  const prov = providers.pick(cfg, body.ai);
+  const content = await providers.complete(prov, p, 8000);
+  const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: `${prov.label} · ${prov.model}` });
   await git.commit(`Ruwe versie gegenereerd: ${type}/${slug}`);
   return doc;
 });
@@ -399,7 +403,7 @@ route('POST', '/api/sync', async () => git.sync());
 const THEMES = ['dark', 'light', 'night', 'sepia', 'forest', 'ocean'];
 const publicSettings = () => ({
   theme: cfg.theme, features: cfg.features, autoSync: !!cfg.autoSync, autoSyncMinutes: cfg.autoSyncMinutes,
-  model: cfg.model, hasApiKey: !!cfg.anthropicApiKey, themes: THEMES, docDates: cfg.docDates || 'dag'
+  model: cfg.model, hasApiKey: providers.list(cfg).length > 0, themes: THEMES, docDates: cfg.docDates || 'dag'
 });
 route('GET', '/api/settings', async () => publicSettings());
 route('PUT', '/api/settings', async (p, body) => {
@@ -418,6 +422,53 @@ route('PUT', '/api/settings', async (p, body) => {
   Object.assign(cfg, patch);
   applySyncSettings();
   return publicSettings();
+});
+
+// ---------- AI-aanbieders ----------
+const aiView = () => ({
+  providers: providers.list(cfg).map(providers.publicView),
+  active: (providers.list(cfg).find(p => p.id === cfg.aiActive) || providers.list(cfg)[0])?.id || null,
+  kinds: Object.fromEntries(Object.entries(providers.KINDS).map(([k, v]) => [k, { label: v.label, needsKey: v.needsKey, keyUrl: v.keyUrl, base: v.base }]))
+});
+function saveProviders(list, extra = {}) {
+  const patch = { aiProviders: list, ...extra };
+  saveUiSettings(patch); Object.assign(cfg, patch);
+}
+route('GET', '/api/ai', async () => aiView());
+// Modellen ophalen (ook als test van de sleutel). Met id: van een bestaande aanbieder.
+route('POST', '/api/ai/models', async (p, body) => {
+  const old = providers.list(cfg).find(x => x.id === body.id) || {};
+  const prov = { ...old, provider: body.provider || old.provider, apiKey: (body.apiKey || '').trim() || old.apiKey, baseUrl: body.baseUrl ?? old.baseUrl, label: providers.KINDS[body.provider || old.provider]?.label || 'AI' };
+  if (!providers.KINDS[prov.provider]) throw Object.assign(new Error('Kies een AI-aanbieder.'), { status: 400 });
+  if (providers.KINDS[prov.provider].needsKey && !prov.apiKey) throw Object.assign(new Error('Vul eerst de API-sleutel in.'), { status: 400 });
+  return { models: await providers.models(prov) };
+});
+route('POST', '/api/ai/providers', async (p, body) => {
+  const prov = providers.clean(body);
+  await providers.models(prov); // test: werkt de sleutel?
+  const list = providers.list(cfg);
+  saveProviders([...list, prov], list.length ? {} : { aiActive: prov.id });
+  return aiView();
+});
+route('PUT', '/api/ai/providers/:id', async ({ id }, body) => {
+  const list = providers.list(cfg);
+  const i = list.findIndex(x => x.id === id);
+  if (i < 0) throw Object.assign(new Error('Deze AI bestaat niet meer.'), { status: 404 });
+  const prov = providers.clean(body, list[i]);
+  if (body.apiKey || body.baseUrl !== undefined) await providers.models(prov);
+  list[i] = prov; saveProviders(list);
+  return aiView();
+});
+route('DELETE', '/api/ai/providers/:id', async ({ id }) => {
+  const list = providers.list(cfg).filter(x => x.id !== id);
+  // De oude losse sleutel ook leegmaken, anders komt "Claude" vanzelf terug.
+  saveProviders(list, id === 'claude' ? { anthropicApiKey: '' } : {});
+  return aiView();
+});
+route('PUT', '/api/ai/active', async (p, body) => {
+  if (!providers.list(cfg).some(x => x.id === body.id)) throw Object.assign(new Error('Deze AI bestaat niet.'), { status: 404 });
+  saveUiSettings({ aiActive: body.id }); cfg.aiActive = body.id;
+  return aiView();
 });
 
 // ---------- inloggen bij GitHub ----------
@@ -573,6 +624,6 @@ async function handleBusyPort() {
   console.log(`  Sleutel: ${cfg.keyFile}`);
   if (ring.keys.length > 1) console.log(`  + ${ring.keys.length - 1} oude sleutel(s) om oudere bestanden te lezen`);
   if (keyCreated) console.log('\n  ⚠  Er is een NIEUWE sleutel gemaakt. Maak er nu een back-up van (iCloud of wachtwoordmanager)!');
-  if (!cfg.anthropicApiKey) console.log('\n  ℹ  Geen API-sleutel ingesteld: AI-knoppen werken via "Kopieer prompt".');
+  if (!providers.list(cfg).length) console.log('\n  ℹ  Geen AI ingesteld: AI-knoppen werken via "Kopieer prompt" (of stel een AI in onder Instellingen → AI).');
   console.log('');
 })().catch(e => { console.error('Starten mislukt:', e.message); process.exit(1); });

@@ -80,7 +80,7 @@ git branch -u origin/main
 | `dataDir` | Map met je versleutelde gedachten. Wordt automatisch een eigen git-repo | `./data` |
 | `keyFile` | Waar je **hoofdsleutel** staat. Het voorbeeld zet hem in iCloud Drive | `./secret.key` |
 | `extraKeyFiles` | Paden naar oude sleutels. Elk `.key`-bestand naast je hoofdsleutel wordt ook geladen | `[]` |
-| `anthropicApiKey` | Nodig voor de knoppen *AI-vragen* en *Genereer ruwe versie* | leeg |
+| `anthropicApiKey` | Oude manier om Claude in te stellen; liever via *Instellingen → AI* (daar kan ook ChatGPT, Gemini, Mistral, Ollama) | leeg |
 | `model` | Het Claude-model voor de AI-functies | `claude-sonnet-5-5` |
 | `autoSync` | Na elke nieuwe of aangepaste gedachte, vraag of document automatisch uploaden naar GitHub | `true` |
 | `autoSyncMinutes` | Daarnaast elke zoveel minuten ophalen en uploaden (handig als je ook op je telefoon schrijft); `0` = uit | `10` |
@@ -160,7 +160,14 @@ periode gaat mee naar het document; de AI gebruikt de feedback zelf alleen als c
 **Instellingen.** Linksonder *Instellingen*: kies een **thema** (Donker, Licht, Nacht, Sepia, Bos, Oceaan), zet
 **functies** aan of uit (Kanban, Feedback, AI-knoppen), stel **automatisch uploaden** en het interval in, kies of
 gegenereerde documenten **datums** bevatten (geen, alleen de dag, of dag en tijd; tijden staan er standaard niet in),
-stel je Trello- en Jira-accounts in en vul je **API-sleutel** en model in. Alles wordt bewaard in `instellingen.json` op je eigen computer (staat in `.gitignore`).
+stel je Trello- en Jira-accounts in en kies je **AI**. Alles wordt bewaard in `instellingen.json` op je eigen computer (staat in `.gitignore`).
+
+**AI kiezen.** Onder *Instellingen → AI* stel je een of meer AI's in: Claude, ChatGPT, Gemini, Mistral, Ollama (gratis,
+draait op je eigen computer) of een andere dienst die werkt zoals de OpenAI API. Je kunt ook meerdere sleutels van
+dezelfde aanbieder toevoegen (bijvoorbeeld een van school en een eigen). Kies de aanbieder, plak de sleutel, klik
+**Modellen ophalen**, kies een model en klik **Toevoegen en testen**. Met het rondje kies je welke AI actief is; bij
+*Genereer ruwe versie* kun je ook per keer een andere kiezen. Een oude `anthropicApiKey` in `config.json` blijft werken
+en staat in de lijst als *Claude*.
 
 **Templatebibliotheek.** In het tabblad *Template*: **Opslaan in bibliotheek…** bewaart het template zodat je het in
 andere projecten en chats kunt gebruiken. In de bibliotheek kies je **Gebruiken**, en daarna **Opslaan**. Je eigen
@@ -324,7 +331,7 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 | *GitHub vraagt om in te loggen* | Klik linksonder op de melding en log in met een token (zie hoofdstuk 6) |
 | Upload mislukt | Klik linksonder op de status voor de uitleg. Alles staat in `data/.git/leerjournaal-sync.log`. Test in de terminal: `cd data && git push` |
 | Update wil niet | Je hebt app-bestanden aangepast: `git status` in de app-map, commit of herstel ze |
-| AI-knoppen geven een fout | Zet `anthropicApiKey` in `config.json`, of gebruik *Kopieer prompt* |
+| AI-knoppen geven een fout | Kijk onder *Instellingen → AI*: klik **Wijzig** en **Modellen ophalen** om de sleutel te testen. Of gebruik *Kopieer prompt* |
 | De app start niet | Staat Node.js erop? `node --version` moet 18 of hoger zijn |
 | *Er draait al een Leerjournaal* | Een oude versie draait nog. Sluit dat terminalvenster, of: `lsof -ti tcp:4173 \| xargs kill`. Vanaf versie 0.5.1 neemt een nieuwe versie het zelf over |
 | *Poort is bezet door een ander programma* | Zet in `config.json` een andere `port`, bijvoorbeeld `4174` |
