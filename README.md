@@ -18,6 +18,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 9. [Veiligheid en privacy](#9-veiligheid-en-privacy)
 10. [Commando's](#10-commandos)
 11. [Problemen oplossen](#11-problemen-oplossen)
+12. [Wensen en voortgang (GitHub Issues)](#12-wensen-en-voortgang-github-issues)
 
 ---
 
@@ -245,3 +246,13 @@ beginnen met `LJ1:`; die blijven gewoon werken.
 | De app start niet | Staat Node.js erop? `node --version` moet 18 of hoger zijn |
 | *Er draait al een Leerjournaal* | Een oude versie draait nog. Sluit dat terminalvenster, of: `lsof -ti tcp:4173 \| xargs kill`. Vanaf versie 0.5.1 neemt een nieuwe versie het zelf over |
 | *Poort is bezet door een ander programma* | Zet in `config.json` een andere `port`, bijvoorbeeld `4174` |
+
+## 12. Wensen en voortgang (GitHub Issues)
+
+Alle geplande veranderingen staan als **issues** in [Journal-Applation](https://github.com/Backpacker2/Journal-Applation/issues).
+
+- Elke taak heeft een Goal, Description en Acceptance criteria, en een label per fase.
+- **bezig** = Claude werkt eraan. **wacht op keuze** = er is eerst een keuze van jou nodig.
+- Is een taak af, dan sluit de commit met de nieuwe code het issue automatisch (`Closes #nummer`), met een reactie over wat er gedaan is.
+- **Nieuwe wens?** Klik op *New issue* → *Nieuwe wens of aanpassing* en vul het formulier in. Vraag Claude daarna om de open issues op te pakken.
+- Let op: deze repository is **openbaar**. Zet in issues nooit gedachten, sleutels of andere privégegevens.
