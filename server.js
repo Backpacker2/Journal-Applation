@@ -200,17 +200,29 @@ route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }, bod
   return created;
 });
 
+// Alles wat de AI nodig heeft voor een document: notities, feedback, en bij projecten de kaarten en gekoppelde documenten.
+function documentPrompt(type, slug, body) {
+  const isProject = type === 'projecten';
+  const ctx = {};
+  if (isProject) {
+    const board = store.getBoard(type, slug);
+    ctx.cards = Object.fromEntries(board.cards.map(c => [c.id, { key: c.remote?.key || null, title: c.title, description: c.description || '' }]));
+    if (body.card) ctx.docs = store.listDocs(type, slug).filter(d => (d.links || []).some(l => l.id === body.card) && d.kind !== 'fout')
+      .map(d => ({ ...d, content: store.getDoc(type, slug, d.id).content }));
+  }
+  return ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, isProject ? store.listFeedback(type, slug) : [], cfg.docDates, ctx);
+}
 route('POST', '/api/spaces/:type/:slug/prompt', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : [], cfg.docDates);
+  const p = documentPrompt(type, slug, body);
   return { prompt: `${p.system}\n\n---\n\n${p.user}`, count: p.count };
 });
 
 route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body) => {
-  const p = ai.buildDocumentPrompt(store.getMeta(type, slug), store.listEntries(type, slug), body, type === 'projecten' ? store.listFeedback(type, slug) : [], cfg.docDates);
+  const p = documentPrompt(type, slug, body);
   if (!p.count) throw Object.assign(new Error('Er zijn geen gedachten in deze periode.'), { status: 400 });
   const prov = providers.pick(cfg, body.ai);
   const content = await providers.complete(prov, p, 8000);
-  const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: `${prov.label} · ${prov.model}` });
+  const doc = store.saveDoc(type, slug, { kind: 'ruw', title: body.title, from: body.from, to: body.to, content, generatedBy: `${prov.label} · ${prov.model}`, links: body.card ? [body.card] : undefined });
   await git.commit(`Ruwe versie gegenereerd: ${type}/${slug}`);
   return doc;
 });
@@ -235,10 +247,16 @@ route('POST', '/api/spaces/:type/:slug/documents/upload', async ({ type, slug },
   const buf = Buffer.from(data, 'base64');
   if (buf.length > 20 * 1024 * 1024) throw Object.assign(new Error('Dit bestand is groter dan 20 MB.'), { status: 413 });
   const { text, note } = extractText(body.name || '', buf);
-  const doc = store.saveUpload(type, slug, { name: body.name, mime: body.mime, data: buf.toString('base64'), title: body.title, text, note });
+  const doc = store.saveUpload(type, slug, { name: body.name, mime: body.mime, data: buf.toString('base64'), title: body.title, text, note, links: body.links });
   await git.commit(`Bestand geüpload: ${type}/${slug}`);
   return doc;
 });
+route('PUT', '/api/spaces/:type/:slug/documents/:id/links', async ({ type, slug, id }, body) => {
+  const doc = store.setDocLinks(type, slug, id, body.links);
+  await git.commit(`Koppelingen document bijgewerkt: ${type}/${slug}`);
+  return doc;
+});
+route('GET', '/api/spaces/:type/:slug/board/cards/:id/related', async ({ type, slug, id }) => store.cardRelated(type, slug, id));
 route('GET', '/api/spaces/:type/:slug/documents/:id/file', async ({ type, slug, id }) => {
   const f = store.getUploadFile(type, slug, id);
   return file(f.fileName, f.mime, f.body);

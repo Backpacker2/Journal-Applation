@@ -477,3 +477,21 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ai-add > .form-row { margin-bottom: 10px; }
 .field[hidden], .ai-add [hidden] { display: none !important; }
 .toggle-row .inline-select, .select-bar .inline-select { flex: 0 0 auto; width: auto; align-self: center; }
+
+/* ---------- kaarten koppelen ---------- */
+.mention-pop { position: fixed; z-index: 60; background: var(--card); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.35); padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
+.mention-head { font-size: 11px; color: var(--muted); padding: 2px 6px 4px; font-weight: 600; }
+.mention-item { text-align: left; background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 7px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mention-item b { color: var(--accent); margin-right: 4px; }
+.mention-item.on, .mention-item:hover { background: var(--accent-soft); }
+.card .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.k-related { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.k-rel-head { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.k-rel { text-align: left; background: var(--card-2); border: 0; color: var(--ink); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-rel:hover { background: var(--accent-soft); }
+.k-rel-actions { margin-top: 4px; flex-wrap: wrap; }
+.doc-links-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 2px 0 8px; }
+.doc-links-row .chip .link { padding: 0 0 0 4px; font-size: 11px; }
+.board > .col { min-width: 0; }
+.board > .col .kcard { min-width: 0; }
+.k-rel { max-width: 100%; }

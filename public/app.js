@@ -168,6 +168,8 @@ async function openSpace(type, slug, view = 'gedachten') {
     try { localStorage.setItem('lj-last', `${type}/${slug}`); } catch {}
     state.thread = '';
     try { const t = localStorage.getItem(`lj-thread-${type}-${slug}`) || ''; if (threadsOf().some(x => x.id === t)) state.thread = t; } catch {}
+    state.board = null; state.docCard = null;
+    if (type === 'projecten') loadCards();
     renderSidebar(); render();
   } catch (e) { fail(e); }
 }
@@ -237,6 +239,14 @@ $('#main').addEventListener('click', async e => {
     if (a === 'delete-entry') return deleteEntries([t.dataset.id]);
     if (a === 'select-mode') { state.selecting = !state.selecting; state.selected.clear(); return renderThread(false); }
     if (a === 'thread') return setThread(t.dataset.id);
+    if (a === 'rel-entry') {
+      state.view = 'gedachten'; const en = state.current.entries.find(x => x.id === t.dataset.id);
+      if (en) state.thread = threadOfEntry(en);
+      render(); return setTimeout(() => jumpTo(t.dataset.id), 150);
+    }
+    if (a === 'rel-feedback') { state.view = 'feedback'; render(); return; }
+    if (a === 'card-doc') { state.docCard = t.dataset.id; state.openDoc = null; state.view = 'documenten'; return render(); }
+    if (a === 'doc-unlink') { state.openDoc = { ...state.openDoc, ...(await api('PUT', `${base()}/documents/${state.openDoc.id}/links`, { links: (state.openDoc.links || []).map(l => l.id).filter(x => x !== t.dataset.id) })) }; return renderDocs(); }
     if (a === 'thread-new') return newThread();
     if (a === 'thread-rename') return renameThread();
     if (a === 'thread-delete') return deleteThread();
@@ -251,7 +261,11 @@ $('#main').addEventListener('click', async e => {
     if (a === 'send') await sendCompose();
     if (a === 'save-answer') await saveAnswer(t.dataset.id);
     if (a === 'edit-answer') { state.editing = t.dataset.id; renderThread(false); }
-    if (a === 'edit-thought') { state.editing = t.dataset.id; renderThread(false); }
+    if (a === 'edit-thought') {
+      state.editing = t.dataset.id; renderThread(false);
+      const ed = $('#edit-' + t.dataset.id), en = state.current.entries.find(x => x.id === t.dataset.id);
+      if (ed) attachMention(ed, (en?.links || []).map(l => l.id));
+    }
     if (a === 'cancel-edit') { state.editing = null; renderThread(false); }
     if (a === 'save-thought') await saveThought(t.dataset.id);
     if (a === 'gen-doc') await generateDoc(t);
@@ -326,6 +340,77 @@ $('#main').addEventListener('click', async e => {
 });
 
 // ---------- gedachten ----------
+// ---------- kaarten (tickets) koppelen ----------
+// De kaarten van het Kanbanbord, voor @-suggesties en koppelingen. Laadt op de achtergrond.
+async function loadCards() {
+  const c = state.current;
+  try { const b = await api('GET', `${base()}/board`); if (state.current === c) state.board = b; } catch {}
+}
+const cardsList = () => state.board?.cards || [];
+const cardById = id => cardsList().find(c => c.id === id);
+const cardToken = c => '@' + (c.remote?.key || c.title.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 30));
+const cardLabel = c => `${c.remote?.key ? c.remote.key + ' · ' : ''}${c.title}`;
+const linkChips = links => (links || []).map(l => cardById(l.id)).filter(Boolean)
+  .map(c => `<button class="chip" data-action="open-link" data-kind="kaart" data-id="${c.id}" title="Open op het Kanbanbord">▦ ${esc(cardLabel(c))}</button>`).join('');
+// Zoekt kaarten: op sleutel (UTC-22), nummer (22) of woorden uit de titel.
+function findCards(q) {
+  const f = fold(q.replace(/^@/, '')).trim();
+  const num = /^\d+$/.test(f) ? f : null;
+  const score = c => {
+    const key = fold(c.remote?.key || ''), title = fold(c.title);
+    if (num && key.endsWith('-' + num)) return 0;
+    if (num && new RegExp(`(^|\\D)${num}(\\D|$)`).test(title)) return 1;
+    if (!f) return 2;
+    if (key.startsWith(f)) return 0;
+    if (title.startsWith(f)) return 1;
+    if (key.includes(f) || title.includes(f) || fold(c.description || '').includes(f)) return 2;
+    return 9;
+  };
+  return cardsList().map(c => [score(c), c]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0]).slice(0, 6).map(([, c]) => c);
+}
+// @-suggesties in een tekstvak: typ @ en een stukje (of een nummer na @), kies met pijltjes en Enter/Tab.
+const mentionPicks = new WeakMap();
+function attachMention(ta, initial = []) {
+  if (state.current?.type !== 'projecten') return;
+  mentionPicks.set(ta, new Set(initial));
+  let pop = null, items = [], idx = 0, tokenStart = -1;
+  const close = () => { pop?.remove(); pop = null; items = []; };
+  const pickCard = c => {
+    const before = ta.value.slice(0, tokenStart), after = ta.value.slice(ta.selectionStart);
+    const tok = cardToken(c) + ' ';
+    ta.value = before + tok + after; const pos = before.length + tok.length; ta.setSelectionRange(pos, pos);
+    mentionPicks.get(ta).add(c.id); close(); ta.dispatchEvent(new Event('input')); ta.focus();
+  };
+  const draw = () => {
+    if (!items.length) return close();
+    if (!pop) { pop = document.createElement('div'); pop.className = 'mention-pop'; document.body.appendChild(pop); }
+    const r = ta.getBoundingClientRect();
+    pop.style.left = `${r.left}px`; pop.style.width = `${Math.min(460, r.width)}px`;
+    pop.innerHTML = `<div class="mention-head">Koppelen aan kaart?</div>` + items.map((c, i) => `<button class="mention-item${i === idx ? ' on' : ''}" data-i="${i}"><b>${esc(c.remote?.key || '▦')}</b> ${esc(c.title)}</button>`).join('');
+    const h = pop.offsetHeight; pop.style.top = `${Math.max(8, r.top - h - 6)}px`;
+    pop.querySelectorAll('.mention-item').forEach(b => b.addEventListener('mousedown', ev => { ev.preventDefault(); pickCard(items[+b.dataset.i]); }));
+  };
+  ta.addEventListener('input', () => {
+    if (!cardsList().length) return close();
+    const upto = ta.value.slice(0, ta.selectionStart);
+    const m = upto.match(/(^|\s)(@[^\s@]{0,40})$/);
+    if (!m) return close();
+    tokenStart = upto.length - m[2].length; items = findCards(m[2]); idx = 0; draw();
+  });
+  ta.addEventListener('keydown', ev => {
+    if (!pop) return;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); ev.stopImmediatePropagation(); idx = (idx + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); }
+    else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); ev.stopImmediatePropagation(); pickCard(items[idx]); }
+    else if (ev.key === 'Escape') { ev.stopImmediatePropagation(); close(); }
+  }, true);
+  ta.addEventListener('blur', () => setTimeout(close, 150));
+}
+// Koppelingen van een tekstvak: gekozen kaarten waarvan de @-verwijzing nog in de tekst staat.
+function mentionLinks(ta) {
+  const picks = mentionPicks.get(ta); if (!picks) return undefined;
+  return [...picks].filter(id => { const c = cardById(id); return c && ta.value.includes(cardToken(c)); });
+}
+
 // ---------- chats binnen een project ----------
 const threadsOf = () => (state.current?.type === 'projecten' ? state.current.meta.threads || [] : []);
 const threadOfEntry = e => (threadsOf().some(t => t.id === e.thread) ? e.thread : '');
@@ -430,6 +515,7 @@ function thoughtCard(e, byId) {
       ? `<textarea class="edit-area" id="edit-${e.id}">${esc(e.text)}</textarea>
          <div class="row-end"><button class="btn small ghost" data-action="cancel-edit">Annuleer</button><button class="btn small primary" data-action="save-thought" data-id="${e.id}">Opslaan</button></div>`
       : `<div class="text">${esc(e.text)}</div>
+         ${(e.links || []).length ? `<div class="chips">${linkChips(e.links)}</div>` : ''}
          ${state.selecting || e.pending ? '' : `<div class="actions"><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button><button class="link" data-action="edit-thought" data-id="${e.id}">Bewerk</button>${manageLinks(e)}</div>`}`}
   </div>`;
 }
@@ -498,6 +584,7 @@ function renderComposer() {
     </div>`;
   const ta = $('#compose-input');
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
+  attachMention(ta);
   ta.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sendCompose().catch(fail); } });
 }
 
@@ -509,6 +596,7 @@ async function sendCompose() {
       ? { kind: 'vraag', question: text, source: 'ik' }
       : { kind: 'gedachte', text, replyTo: state.replyTo };
     if (state.current.type === 'projecten' && state.thread) body.thread = state.thread;
+    const links = mentionLinks(ta); if (links?.length) body.links = links;
     let entry;
     try {
       entry = await api('POST', `${base()}/entries`, body);
@@ -567,8 +655,9 @@ async function saveAnswer(id) {
   replaceEntry(updated); state.editing = null; renderThread(false); toast('Antwoord opgeslagen');
 }
 async function saveThought(id) {
-  const text = $('#edit-' + id).value;
-  const updated = await api('PUT', `${base()}/entries/${id}`, { text });
+  const ed = $('#edit-' + id), text = ed.value;
+  const links = mentionLinks(ed);
+  const updated = await api('PUT', `${base()}/entries/${id}`, { text, ...(links ? { links } : {}) });
   replaceEntry(updated); state.editing = null; renderThread(false);
 }
 async function titleEntry(id) {
@@ -656,11 +745,13 @@ async function renderDocs() {
   const inner = $('#docs-inner');
   try {
     state.docs = await api('GET', `${base()}/documents`);
+    if (state.current.type === 'projecten' && !state.board) await loadCards();
     if (state.openDoc) return renderOpenDoc(inner);
     const today = new Date(); const twoWeeks = new Date(Date.now() - 13 * 864e5);
     const ai = state.status?.aiEnabled;
     const isProject = state.current.type === 'projecten';
     const sprints = state.current.meta.sprints || [];
+    const tcard = isProject && state.docCard ? cardById(state.docCard) : null;
     const todayKey = isoDay(today);
     // Standaard de lopende sprint, anders de laatst afgelopen.
     const cur = sprints.find(x => x.from <= todayKey && todayKey <= x.to) || [...sprints].reverse().find(x => x.to < todayKey) || null;
@@ -672,10 +763,14 @@ async function renderDocs() {
         ${sprints.length ? `<div class="form-row"><label class="field grow">Periode
           <select id="doc-sprint"><option value="">Eigen periode kiezen</option>${sprints.map(x => `<option value="${x.id}" ${x.id === cur?.id ? 'selected' : ''}>${esc(x.name)} (${x.from.slice(8)}-${x.from.slice(5, 7)} t/m ${x.to.slice(8)}-${x.to.slice(5, 7)})</option>`).join('')}</select></label></div>` : ''}
         <div class="form-row">
-          <label class="field grow">Titel<input id="doc-title" value="${cur ? esc(cur.name) : state.current.type === 'projecten' ? 'Sprint' : esc(state.current.meta.name)}"></label>
-          <label class="field">Van<input type="date" id="doc-from" value="${cur ? cur.from : isoDay(twoWeeks)}"></label>
-          <label class="field">Tot en met<input type="date" id="doc-to" value="${cur ? cur.to : isoDay(today)}"></label>
+          ${isProject && cardsList().length ? `<label class="field">Over<select id="doc-card">
+            <option value="">Het hele project</option>
+            ${cardsList().map(c => `<option value="${c.id}" ${state.docCard === c.id ? 'selected' : ''}>▦ ${esc(cardLabel(c).slice(0, 70))}</option>`).join('')}</select></label>` : ''}
+          <label class="field grow">Titel<input id="doc-title" value="${tcard ? esc(cardLabel(tcard)) : cur ? esc(cur.name) : state.current.type === 'projecten' ? 'Sprint' : esc(state.current.meta.name)}"></label>
+          <label class="field">Van<input type="date" id="doc-from" value="${tcard ? '' : cur ? cur.from : isoDay(twoWeeks)}"></label>
+          <label class="field">Tot en met<input type="date" id="doc-to" value="${tcard ? '' : cur ? cur.to : isoDay(today)}"></label>
         </div>
+        ${tcard ? '<div class="hint">Over één kaart: alleen de gedachten (met @), feedback en documenten die aan deze kaart gekoppeld zijn. Laat de datums leeg voor alles.</div>' : ''}
         ${threadsOf().length ? `<div class="form-row thread-pick"><span class="hint">Chats:</span>
           ${[{ id: '', name: 'Algemeen' }, ...threadsOf()].map(t => `<label class="check"><input type="checkbox" class="doc-thread" value="${t.id}" checked> ${esc(t.name)}</label>`).join('')}</div>` : ''}
         <div class="form-row">
@@ -705,6 +800,7 @@ async function renderDocs() {
           </details>` : ''}`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
       </div>`;
     $('#doc-upload')?.addEventListener('change', e => uploadDocs(e.target.files).catch(fail));
+    $('#doc-card')?.addEventListener('change', e => { state.docCard = e.target.value || null; renderDocs(); });
     const sel = $('#doc-sprint');
     if (sel) sel.addEventListener('change', () => {
       const x = sprints.find(y => y.id === sel.value); if (!x) return;
@@ -796,11 +892,18 @@ function renderOpenDoc(inner) {
       <div class="form-row" style="gap:8px"><span class="badge ${d.kind}">${kindLabel(d.kind)}</span>
         <span class="hint">${fmtDateTimeFull(d.createdAt)} · ${esc(d.generatedBy || '')}${d.from ? ` · gedachten van ${d.from} t/m ${d.to}` : ''}</span></div>
       ${versionStrip(d)}
+      ${state.current.type === 'projecten' && cardsList().length && d.id ? `<div class="doc-links-row"><span class="hint">Gekoppeld aan:</span>
+        ${(d.links || []).map(l => cardById(l.id)).filter(Boolean).map(c => `<span class="chip">▦ ${esc(cardLabel(c))} <button class="link" data-action="doc-unlink" data-id="${c.id}" title="Ontkoppelen">✕</button></span>`).join('') || '<span class="hint">niets</span>'}
+        <select id="doc-link-add" class="inline-select"><option value="">+ Koppelen aan kaart…</option>${cardsList().filter(c => !(d.links || []).some(l => l.id === c.id)).map(c => `<option value="${c.id}">${esc(cardLabel(c).slice(0, 70))}</option>`).join('')}</select></div>` : ''}
       ${d.note ? `<div class="notice subtle">${esc(d.note)}</div>` : ''}
       ${state.docFormat === 'md' ? `<pre class="doc-raw">${esc(d.content)}</pre>`
         : state.docFormat === 'txt' ? '<pre class="doc-raw" id="doc-txt">Laden…</pre>'
         : `<div class="doc-view">${md(d.content)}</div>`}
     </div>`;
+  $('#doc-link-add')?.addEventListener('change', async ev => {
+    const id = ev.target.value; if (!id) return;
+    try { state.openDoc = { ...state.openDoc, ...(await api('PUT', `${base()}/documents/${d.id}/links`, { links: [...(d.links || []).map(l => l.id), id] })) }; renderDocs(); } catch (e) { fail(e); }
+  });
   if (state.docFormat === 'txt') {
     fetch(`${base()}/documents/${d.id}/export/txt`, { headers: { 'x-leerjournaal': '1' } })
       .then(r => r.text()).then(t => { const el = $('#doc-txt'); if (el) el.textContent = t; }).catch(fail);
@@ -808,15 +911,16 @@ function renderOpenDoc(inner) {
 }
 
 // Bestanden uploaden (Word, Markdown, tekst, pdf, afbeeldingen…). Het origineel blijft bewaard.
-async function uploadDocs(files) {
+async function uploadDocs(files, links) {
+  links = links || ($('#doc-card')?.value ? [$('#doc-card').value] : undefined);
   const list = [...(files || [])]; if (!list.length) return;
   for (const f of list) {
     if (f.size > 20 * 1024 * 1024) { toast(`${f.name} is groter dan 20 MB`, true); continue; }
     const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = bad; r.readAsDataURL(f); });
-    await api('POST', `${base()}/documents/upload`, { name: f.name, mime: f.type, data });
+    await api('POST', `${base()}/documents/upload`, { name: f.name, mime: f.type, data, links });
   }
   toast(list.length === 1 ? `${list[0].name} geüpload` : `${list.length} bestanden geüpload`);
-  renderDocs();
+  if (state.view === 'documenten') renderDocs();
 }
 // Alle versies van dit document met datum en tijd, zodat je snel een vorige versie opent.
 function versionStrip(d) {
@@ -838,7 +942,7 @@ function docParams() {
   const boxes = [...document.querySelectorAll('.doc-thread')];
   const threads = boxes.length && boxes.some(b => !b.checked) ? boxes.filter(b => b.checked).map(b => b.value) : undefined;
   if (boxes.length && !boxes.some(b => b.checked)) throw new Error('Kies minstens één chat.');
-  return { title: $('#doc-title').value.trim(), from: $('#doc-from').value, to: $('#doc-to').value, threads };
+  return { title: $('#doc-title').value.trim(), from: $('#doc-from').value, to: $('#doc-to').value, threads, card: $('#doc-card')?.value || undefined };
 }
 async function generateDoc(btn) {
   btn.disabled = true; btn.textContent = 'Bezig met schrijven… (kan een minuut duren)';
@@ -905,6 +1009,26 @@ function fitBoard() {
   bd.style.setProperty('--col-max', `${Math.max(320, innerHeight - top - 24)}px`);
 }
 addEventListener('resize', () => fitBoard());
+// Wat er aan een kaart hangt: gedachten (via @), feedback en documenten. Plus: document maken of bestand toevoegen.
+async function drawCardRelated(id) {
+  const el = $('#kr-' + id); if (!el) return;
+  try {
+    const r = await api('GET', `${base()}/board/cards/${id}/related`);
+    const n = r.entries.length + r.feedback.length + r.documents.length;
+    el.innerHTML = `<div class="k-rel-head">Gekoppeld (${n})</div>
+      ${r.entries.map(e => `<button class="k-rel" data-action="rel-entry" data-id="${e.id}">💭 ${esc((e.text || e.question || '').slice(0, 80))}</button>`).join('')}
+      ${r.feedback.map(f => `<button class="k-rel" data-action="rel-feedback" data-id="${f.id}">🗣 ${esc(f.title)}</button>`).join('')}
+      ${r.documents.map(d => `<button class="k-rel" data-action="open-link" data-kind="document" data-id="${d.id}">▤ ${esc(d.title)} <span class="hint">${kindLabel(d.kind)}</span></button>`).join('')}
+      ${n ? '' : '<div class="hint">Nog niets. Typ in een gedachte @ en kies deze kaart, koppel feedback, of voeg hieronder een bestand toe.</div>'}
+      <div class="row-end k-rel-actions">
+        <label class="btn small ghost upload-btn">⇪ Bestand toevoegen<input type="file" multiple hidden data-card-upload="${id}"></label>
+        <button class="btn small" data-action="card-doc" data-id="${id}">Document over deze kaart</button>
+      </div>`;
+    el.querySelector('[data-card-upload]').addEventListener('change', async ev => {
+      try { await uploadDocs(ev.target.files, [id]); drawCardRelated(id); } catch (err) { fail(err); }
+    });
+  } catch (e) { el.innerHTML = `<span class="hint">${esc(e.message)}</span>`; }
+}
 async function addColumn(name) {
   const r = await api('POST', `${base()}/board/columns`, { name });
   state.board = r.board; drawBoard(); toast(`Kolom “${name}” toegevoegd`);
@@ -997,6 +1121,7 @@ function drawBoard() {
               <textarea class="k-desc" id="kd-${c.id}" placeholder="Beschrijving (optioneel)">${esc(c.description || '')}</textarea>
               <label class="field">Kolom<select id="kc-${c.id}">${colOpts(c.column)}</select></label>
               ${b.link && c.localOnly ? `<label class="check"><input type="checkbox" id="ks-${c.id}"> Ook in ${svcName(b.link.kind)} zetten</label>` : ''}
+              <div class="k-related" id="kr-${c.id}"><span class="hint">Gekoppeld: laden…</span></div>
               <div class="row-end">${b.link?.kind === 'jira' && c.remote ? '<span class="hint">Verwijderen doe je in Jira zelf</span>' : `<button class="link danger" data-action="card-del" data-id="${c.id}">${c.remote ? 'Archiveren in Trello' : 'Verwijder'}</button>`}<span class="spacer-h"></span>
                 <button class="btn small ghost" data-action="card-cancel">Annuleer</button><button class="btn small primary" data-action="card-save" data-id="${c.id}">Opslaan</button></div>
             </div>` : `
@@ -1014,6 +1139,7 @@ function drawBoard() {
       </section>`;
     }).join('')}</div>`;
   fitBoard();
+  if (state.cardEdit) drawCardRelated(state.cardEdit);
   const f = $('#board-filter');
   f.addEventListener('input', () => { saveBoardView({ filter: f.value }); const pos = f.selectionStart; drawBoard(); const nf = $('#board-filter'); nf.focus(); nf.setSelectionRange(pos, pos); });
   $('#board-compact').addEventListener('change', e => { saveBoardView({ compact: e.target.checked }); drawBoard(); });

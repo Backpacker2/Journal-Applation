@@ -153,6 +153,14 @@ en je persoonlijke project aan Trello.
    gearchiveerd. Jira-issues die al langer dan 30 dagen klaar zijn, worden niet meer opgehaald.
 6. **Ontkoppelen** houdt alle kaarten hier; ze worden alleen niet meer bijgewerkt.
 
+**Alles koppelen aan een kaart (ticket).** Typ in een gedachte `@` met een stukje van de titel of het nummer
+(bijvoorbeeld `@22` of `@sensor`): er verschijnt een lijstje met kaarten, en met Enter of een klik koppel je de gedachte
+aan die kaart (`@UTC-22`). Feedback koppel je in het feedbackformulier; documenten in een geopend document met
+*Koppelen aan kaart…*. Open je een kaart op het Kanbanbord, dan zie je alles wat eraan hangt. Daar kun je ook direct
+een **bestand toevoegen** (bijvoorbeeld een testrapport) en **Document over deze kaart** maken: dan gaan alleen de
+gekoppelde gedachten, feedback en documenten naar de AI, met de kaart zelf als context. Je gedachten gaan nooit naar
+Trello of Jira; de koppeling bestaat alleen in Leerjournaal.
+
 **Feedback (projecten).** Tabblad *Feedback*: leg feedback vast (titel, van wie, datum, de feedback zelf), beantwoord de
 vragen die erin stonden, schrijf op wat je ervan leerde en koppel het aan documenten of kaarten. Feedback uit de gekozen
 periode gaat mee naar het document; de AI gebruikt de feedback zelf alleen als context, jouw antwoorden en lessen als inhoud.
