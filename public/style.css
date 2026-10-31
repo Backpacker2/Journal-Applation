@@ -236,11 +236,41 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 }
 .toast.error { background: var(--red); color: #fff; }
 
+/* ---------- telefoon ---------- */
+.topbar, .scrim { display: none; }
 @media (max-width: 760px) {
-  body { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; max-height: 40vh; }
-  main { height: auto; flex: 1; }
-  .thread, .page, .composer, .header-wrap { padding-left: 16px; padding-right: 16px; }
+  body { flex-direction: column; height: 100dvh; }
+  .topbar {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    background: var(--side); color: #fff; font-weight: 700; font-size: 16px;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; min-height: 52px;
+  }
+  #topbar-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-btn { font-size: 22px; padding: 4px 10px; color: #fff; }
+  .sidebar {
+    position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(86vw, 320px); height: 100dvh;
+    transform: translateX(-100%); transition: transform .2s ease; padding-top: calc(env(safe-area-inset-top) + 20px);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 14px);
+  }
+  .sidebar.open { transform: none; box-shadow: 0 0 40px rgba(0,0,0,.5); }
+  .scrim.open { display: block; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
+  main { height: auto; flex: 1; min-height: 0; }
+  .thread, .page, .composer, .header-wrap { padding-left: 14px; padding-right: 14px; }
+  .composer { padding-bottom: calc(env(safe-area-inset-bottom) + 12px); }
+  .header-wrap { padding-top: 12px; }
+  .header-top { flex-direction: column; gap: 8px; }
+  .header-top h1 { display: none; } /* de naam staat al in de balk bovenaan */
+  .header-top .sub { display: none; }
+  .header-actions { width: 100%; }
+  .header-actions .btn.primary { margin-left: auto; padding: 6px 12px; }
+  .tabs { overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
+  .tab { white-space: nowrap; padding: 8px 10px; }
+  .input-row textarea, input, textarea, select { font-size: 16px; } /* iOS zoomt niet in bij 16px */
+  .tools { gap: 6px; }
+  .tools .btn.small { padding: 5px 8px; }
+  .thread { padding-top: 14px; }
+  .form-row { gap: 8px; }
+  .field input { min-width: 0; }
   .doc-row { grid-template-columns: 1fr auto; row-gap: 4px; }
   .doc-row .doc-date { display: none; }
 }
@@ -311,7 +341,8 @@ mark { background: rgba(224, 166, 69, 0.35); color: inherit; border-radius: 3px;
 .row-links { display: inline-flex; gap: 12px; }
 .sprint-tag { color: var(--accent); font-weight: 700; }
 select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
-@media (max-width: 760px) { .doc-row.all { grid-template-columns: 1fr auto; } .doc-row.all .doc-space { display: none; } }
+@media (max-width: 760px) { .doc-row.all { grid-template-columns: 1fr auto; } .doc-row.all .doc-space, .doc-row.all .doc-date { display: none; } }
+.pending { opacity: .6; border-style: dashed; }
 
 /* ---------- kanban ---------- */
 .board-wrap { display: flex; flex-direction: column; gap: 14px; }

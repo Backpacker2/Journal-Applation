@@ -155,8 +155,16 @@ async function openSpace(type, slug, view = 'gedachten') {
   } catch (e) { fail(e); }
 }
 
+function setTopbar(title) { const el = $('#topbar-title'); if (el) el.textContent = title || 'Leerjournaal'; }
+function closeDrawer() { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('open'); }
+$('#menu-btn').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#scrim').classList.add('open'); });
+$('#scrim').addEventListener('click', closeDrawer);
+// Op de telefoon: na een keuze in het menu sluit het menu vanzelf.
+$('#sidebar').addEventListener('click', e => { if (e.target.closest('.space-item, .nav-item, #settings-btn, #keys-btn, [data-open-keys]')) closeDrawer(); });
+
 function render() {
   const c = state.current; if (!c) return;
+  setTopbar(c.meta.name);
   const isProject = c.type === 'projecten';
   $('#main').innerHTML = `
     <div class="header-wrap">
@@ -307,15 +315,15 @@ function thoughtCard(e, byId) {
       <span class="qtext">${esc(parent.text || parent.question)}</span></button>`
     : e.replyTo ? `<div class="quote gone"><span class="qhead">Reactie op een verwijderde gedachte</span></div>` : '';
   const editing = state.editing === e.id;
-  return `<div class="card${state.selected.has(e.id) ? ' selected' : ''}" id="e-${e.id}"${selAttrs(e)}>
-    <div class="meta">${selBox(e)}<span class="time">${time(e.id)}</span><span class="file">${e.id}.txt${e.updatedAt ? ' · bewerkt' : ''}</span></div>
+  return `<div class="card${state.selected.has(e.id) ? ' selected' : ''}${e.pending ? ' pending' : ''}" id="e-${e.id}"${selAttrs(e)}>
+    <div class="meta">${selBox(e)}<span class="time">${time(e.id)}</span><span class="file">${e.pending ? 'wacht op verbinding…' : `${e.id}.txt${e.updatedAt ? ' · bewerkt' : ''}`}</span></div>
     ${titleLine(e)}
     ${quote}
     ${editing
       ? `<textarea class="edit-area" id="edit-${e.id}">${esc(e.text)}</textarea>
          <div class="row-end"><button class="btn small ghost" data-action="cancel-edit">Annuleer</button><button class="btn small primary" data-action="save-thought" data-id="${e.id}">Opslaan</button></div>`
       : `<div class="text">${esc(e.text)}</div>
-         ${state.selecting ? '' : `<div class="actions"><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button><button class="link" data-action="edit-thought" data-id="${e.id}">Bewerk</button>${manageLinks(e)}</div>`}`}
+         ${state.selecting || e.pending ? '' : `<div class="actions"><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button><button class="link" data-action="edit-thought" data-id="${e.id}">Bewerk</button>${manageLinks(e)}</div>`}`}
   </div>`;
 }
 
@@ -364,7 +372,7 @@ function renderComposer() {
       ${isQ ? '<span class="mode-pill">Je typt nu een vraag aan jezelf. Het antwoord geef je in het kaartje.</span>' : ''}
     </div>
     <div class="input-row">
-      <textarea id="compose-input" rows="1" placeholder="${isQ ? 'Typ je vraag…' : 'Typ je gedachte… (Enter = opslaan, Shift+Enter = nieuwe regel)'}"></textarea>
+      <textarea id="compose-input" rows="1" placeholder="${isQ ? 'Typ je vraag…' : innerWidth < 760 ? 'Typ je gedachte…' : 'Typ je gedachte… (Enter = opslaan, Shift+Enter = nieuwe regel)'}"></textarea>
       <button class="btn primary" data-action="send">Opslaan</button>
     </div>`;
   const ta = $('#compose-input');
@@ -379,13 +387,50 @@ async function sendCompose() {
     const body = state.composeMode === 'vraag'
       ? { kind: 'vraag', question: text, source: 'ik' }
       : { kind: 'gedachte', text, replyTo: state.replyTo };
-    const entry = await api('POST', `${base()}/entries`, body);
+    let entry;
+    try {
+      entry = await api('POST', `${base()}/entries`, body);
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;
+      // Geen verbinding (bijv. op je telefoon): bewaren en later versturen.
+      entry = queueEntry(base(), body);
+      toast('Geen verbinding: je gedachte wordt verstuurd zodra je weer online bent.');
+    }
     state.current.entries.push(entry);
     state.replyTo = null; state.composeMode = 'gedachte';
     renderThread(); bumpCount(1);
     $('#compose-input').focus();
   } finally { if (ta.isConnected) ta.disabled = false; }
 }
+
+// ---------- offline wachtrij ----------
+const QKEY = 'lj-queue';
+const readQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch { return []; } };
+const writeQueue = q => { try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch {} };
+function queueEntry(url, body) {
+  const q = readQueue(); const now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const id = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}_${p(now.getHours())}-${p(now.getMinutes())}-${p(now.getSeconds())}`;
+  q.push({ url, body, at: now.toISOString() }); writeQueue(q);
+  return { id, kind: body.kind, text: body.text, question: body.question, answer: '', source: body.source, replyTo: body.replyTo, createdAt: now.toISOString(), pending: true };
+}
+let flushing = false;
+async function flushQueue() {
+  const q = readQueue(); if (!q.length || flushing) return;
+  flushing = true; let sent = 0;
+  try {
+    while (readQueue().length) {
+      const [item, ...rest] = readQueue();
+      try { await api('POST', `${item.url}/entries`, item.body); } catch (e) { if (e instanceof TypeError) break; }
+      writeQueue(rest); sent++;
+    }
+  } finally { flushing = false; }
+  if (sent) {
+    toast(`${sent} ${sent === 1 ? 'gedachte' : 'gedachten'} van toen je offline was verstuurd`);
+    if (state.current && state.view === 'gedachten') openSpace(state.current.type, state.current.slug);
+  }
+}
+window.addEventListener('online', flushQueue);
 
 function bumpCount(n) {
   const s = state.spaces.find(s => s.type === state.current.type && s.slug === state.current.slug);
@@ -874,6 +919,7 @@ function highlight(text, q) {
 }
 
 async function runSearch(q) {
+  setTopbar('Zoeken');
   state.mainMode = 'search';
   const kindLabel = { gedachte: 'Gedachte', vraag: 'Vraag', document: 'Document', ruimte: 'Project/chat' };
   try {
@@ -907,6 +953,7 @@ async function openHit(d) {
 // ---------- alle documenten ----------
 $('#all-docs-btn').addEventListener('click', () => { state.docsFilter = state.docsFilter || 'alle'; renderAllDocs(); });
 async function renderAllDocs() {
+  setTopbar('Alle documenten');
   state.mainMode = 'docs'; state.current = null; renderSidebar();
   $('#all-docs-btn').classList.add('active');
   $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Alle documenten</h1>
@@ -951,6 +998,7 @@ async function loadStatus() {
       sessionStorage.setItem('lj-key-warned', '1');
       toast(`Nieuwe sleutel gemaakt in ${s.keyFile}. Maak er een back-up van!`, true);
     }
+    flushQueue();
   } catch (e) { $('#sync-status').textContent = 'Server niet bereikbaar'; }
 }
 $('#sync-btn').addEventListener('click', async e => {
@@ -975,6 +1023,7 @@ const THEME_INFO = {
   forest: ['Bos', ['#0f1612', '#18241d', '#4cc38a']], ocean: ['Oceaan', ['#0d1520', '#152234', '#4ea8ff']]
 };
 async function openSettings() {
+  setTopbar('Instellingen');
   state.current = null; state.mainMode = 'settings'; renderSidebar();
   await loadSettings();
   const st = state.settings || {};
@@ -1030,6 +1079,7 @@ async function saveSettings(patch, rerender = false) {
 
 // ---------- sleutels ----------
 async function openKeys() {
+  setTopbar('Sleutels');
   state.current = null; renderSidebar();
   $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Sleutels</h1>
     <div class="sub">Je hoofdsleutel versleutelt alles wat je nu schrijft. Oude sleutels gebruikt de app alleen om oudere bestanden te lezen.</div></div>
@@ -1107,6 +1157,11 @@ async function applyUpdate(e) {
     }
     toast('De app reageert niet. Start hem opnieuw met start.command.', true);
   } catch (err) { fail(err); b.disabled = false; b.textContent = 'Nu bijwerken'; }
+}
+
+// ---------- installeerbaar op je telefoon ----------
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
 // ---------- start ----------

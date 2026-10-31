@@ -2,13 +2,26 @@
 <html lang="nl" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Leerjournaal</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Leerjournaal">
+  <meta name="theme-color" content="#0e1016">
   <link rel="stylesheet" href="/style.css">
   <script>try { const t = localStorage.getItem('lj-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 </head>
 <body>
-  <aside class="sidebar">
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">☰</button>
+    <span id="topbar-title">Leerjournaal</span>
+  </header>
+  <div class="scrim" id="scrim"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="logo">L</span><span>Leerjournaal</span></div>
 
     <div class="search-wrap"><input id="search" type="search" placeholder="Zoeken in alles…" autocomplete="off" spellcheck="false"></div>

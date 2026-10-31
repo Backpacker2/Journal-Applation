@@ -19,6 +19,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 10. [Commando's](#10-commandos)
 11. [Problemen oplossen](#11-problemen-oplossen)
 12. [Wensen en voortgang (GitHub Issues)](#12-wensen-en-voortgang-github-issues)
+13. [Op je telefoon (Mac Mini + Tailscale)](#13-op-je-telefoon-mac-mini--tailscale)
 
 ---
 
@@ -292,3 +293,66 @@ Alle geplande veranderingen staan als **issues** in [Journal-Applation](https://
 - Is een taak af, dan sluit de commit met de nieuwe code het issue automatisch (`Closes #nummer`), met een reactie over wat er gedaan is.
 - **Nieuwe wens?** Klik op *New issue* → *Nieuwe wens of aanpassing* en vul het formulier in. Vraag Claude daarna om de open issues op te pakken.
 - Let op: deze repository is **openbaar**. Zet in issues nooit gedachten, sleutels of andere privégegevens.
+
+## 13. Op je telefoon (Mac Mini + Tailscale)
+
+De app draait op je Mac Mini en je opent hem op je iPhone als app op je beginscherm. Tailscale zorgt dat alleen
+jouw apparaten erbij kunnen. Je laptop gebruikt voortaan hetzelfde adres, zodat er één plek is die schrijft.
+
+**Wat de app al kan op je telefoon**
+- Aangepaste weergave: menu via ☰, groot invoerveld (geschikt voor dicteren), geen inzoomen bij typen.
+- Installeerbaar: Safari → Deel → **Zet op beginscherm** geeft een eigen icoon en volledig scherm.
+- Offline: ben je even zonder verbinding, dan wordt je gedachte bewaard en verstuurd zodra je weer online bent.
+- Snel vastleggen met Siri via een opdracht (Shortcut), zie hieronder.
+
+### Stap 1 – Mac Mini (Ubuntu)
+
+```bash
+sudo apt-get install -y git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+git clone https://github.com/Backpacker2/Journal-Applation.git ~/Leerjournaal
+git clone https://github.com/jouw-naam/Journal-Data.git ~/Leerjournaal/data   # privé: log in met een token of 'gh auth login'
+```
+
+Zet je sleutel(s) op de Mini (Ubuntu heeft geen iCloud). Vanaf je Mac:
+
+```bash
+ssh mini 'mkdir -p ~/.leerjournaal && chmod 700 ~/.leerjournaal'
+scp ~/Library/Mobile\ Documents/com~apple~CloudDocs/Leerjournaal/*.key mini:~/.leerjournaal/
+```
+
+Maak op de Mini `~/Leerjournaal/config.json`:
+
+```json
+{ "dataDir": "./data", "keyFile": "~/.leerjournaal/secret.key" }
+```
+
+En installeer de app als vaste dienst (start vanzelf na een herstart of stroomstoring):
+
+```bash
+cd ~/Leerjournaal && bash tools/install-ubuntu.sh
+```
+
+### Stap 2 – Tailscale
+
+1. Installeer Tailscale op de Mini (`curl -fsSL https://tailscale.com/install.sh | sh`, dan `sudo tailscale up`) en op je iPhone (App Store), met hetzelfde account.
+2. Zet in het Tailscale-beheerscherm **MagicDNS** en **HTTPS Certificates** aan.
+3. Op de Mini: `sudo tailscale serve --bg localhost:4173`. Met `tailscale serve status` zie je je adres, bijvoorbeeld `https://mini.tail1234.ts.net`.
+4. Optioneel: alleen jouw account toelaten, in `config.json`: `"tailscaleUsers": ["jouw@email"]`.
+
+### Stap 3 – iPhone
+
+1. Open je `https://…ts.net`-adres in Safari.
+2. Deel → **Zet op beginscherm**.
+
+### Stap 4 – Snel een gedachte inspreken (Siri)
+
+Maak in de app **Opdrachten** een nieuwe opdracht:
+
+1. **Dicteer tekst**.
+2. **Haal inhoud van URL op**: URL `https://…ts.net/api/quick`, methode **POST**, header `x-leerjournaal` = `1`,
+   verzoek-body **JSON** met `text` = *Gedicteerde tekst*. Optioneel `chat` = de naam van een chat of project
+   (standaard gaat alles naar de chat *Snelle gedachten*, die vanzelf wordt aangemaakt).
+3. **Toon melding**: *Opgeslagen*.
+
+Noem de opdracht **Gedachte**; dan werkt *“Hé Siri, gedachte”*.

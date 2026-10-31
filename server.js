@@ -21,7 +21,7 @@ const git = new Git(cfg.dataDir);
 const updater = new Updater(cfg.appDir);
 
 const PUBLIC = path.join(__dirname, 'public');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 
 // Bestandsnaam voor downloads: titel + datum, zonder vreemde tekens.
 function fileName(doc) {
@@ -58,7 +58,7 @@ function serveStatic(req, res) {
   if (!file.startsWith(PUBLIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404); return res.end('Niet gevonden');
   }
-  res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+  res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
   fs.createReadStream(file).pipe(res);
 }
 
@@ -111,6 +111,20 @@ route('POST', '/api/update', async () => {
   // Na het antwoord stoppen met code 42: de launcher start dan de nieuwe versie.
   if (r.updated) setTimeout(() => process.exit(42), 300);
   return r;
+});
+
+// Snel een gedachte toevoegen, bijvoorbeeld vanuit een iPhone-opdracht (Shortcut) of Siri.
+// Body: { "text": "...", "chat": "naam van een chat of project (optioneel)" }
+const QUICK_CHAT = 'Snelle gedachten';
+route('POST', '/api/quick', async (p, body) => {
+  const text = String(body.text || '').trim();
+  if (!text) throw Object.assign(new Error('Lege gedachte'), { status: 400 });
+  const want = String(body.chat || QUICK_CHAT).trim().toLowerCase();
+  let sp = store.listSpaces().find(s => !s.locked && String(s.name).toLowerCase() === want);
+  if (!sp) sp = store.createSpace('chats', body.chat ? String(body.chat).trim() : QUICK_CHAT);
+  const e = store.addEntry(sp.type, sp.slug, { kind: 'gedachte', text });
+  await git.commit(`Gedachte toegevoegd: ${sp.type}/${sp.slug}`);
+  return { ok: true, chat: sp.name, id: e.id };
 });
 
 route('GET', '/api/search', async (p, b, url) => ({ query: url.searchParams.get('q') || '', results: store.search(url.searchParams.get('q') || '') }));
@@ -268,15 +282,35 @@ route('POST', '/api/shutdown', async () => {
   return { ok: true };
 });
 
+// ---------- toegang ----------
+// Toegestaan: localhost, je eigen Tailscale-adres (*.ts.net) en wat in allowedHosts staat.
+// De server luistert alleen op 127.0.0.1; Tailscale Serve stuurt verkeer van je telefoon door.
+const TS_HOST_RE = /^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net(:\d+)?$/i;
+const hostName = req => String(req.headers.host || '').toLowerCase();
+function isRemoteHost(req) {
+  const h = hostName(req);
+  return h !== `localhost:${cfg.port}` && h !== `127.0.0.1:${cfg.port}`;
+}
+function hostAllowed(req) {
+  const h = hostName(req);
+  if (!isRemoteHost(req)) return true;
+  if (TS_HOST_RE.test(h)) return true;
+  return (cfg.allowedHosts || []).map(x => String(x).toLowerCase()).some(x => h === x || h.split(':')[0] === x);
+}
+
 // ---------- server ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (!url.pathname.startsWith('/api/')) return serveStatic(req, res);
   // Beveiliging: alleen de eigen pagina mag de API gebruiken. Andere websites kunnen deze header
   // niet meesturen zonder toestemming, en de Host-check blokkeert DNS-rebinding.
-  const host = String(req.headers.host || '');
-  if (![`localhost:${cfg.port}`, `127.0.0.1:${cfg.port}`].includes(host) || req.headers['x-leerjournaal'] !== '1') {
+  if (!hostAllowed(req) || req.headers['x-leerjournaal'] !== '1') {
     return send(res, 403, { error: 'Niet toegestaan' });
+  }
+  // Via Tailscale Serve: alleen de accounts uit tailscaleUsers (als die lijst is ingevuld).
+  const tsUser = req.headers['tailscale-user-login'];
+  if ((cfg.tailscaleUsers || []).length && isRemoteHost(req) && !cfg.tailscaleUsers.includes(String(tsUser || '').toLowerCase())) {
+    return send(res, 403, { error: 'Dit Tailscale-account heeft geen toegang' });
   }
   await ready;
   for (const r of routes) {
