@@ -107,6 +107,16 @@ later extra tabbladen (Kanban, Feedback). Chats zijn voor alles waar je even ove
 **Projecten en chats beheren.** Rechtsboven: **Naam wijzigen** en **Archiveren**. Een gearchiveerde chat of
 project blijft gewoon bestaan, maar staat in de zijbalk alleen nog onder **Archief**. Met **Uit archief halen** zet je hem terug.
 
+**Zoeken.** Het zoekveld bovenaan de zijbalk doorzoekt al je gedachten, vragen, antwoorden en documenten
+(ook in het archief). Hoofdletters en accenten maken niet uit. Klik op een resultaat om er direct naartoe te gaan.
+
+**Alle documenten.** Onder het zoekveld: één overzicht van alle ruwe versies en eindversies uit al je projecten en
+chats, te filteren en direct te downloaden.
+
+**Sprints (projecten).** In het tabblad *Documenten* leg je vaste periodes vast: naam, begin- en einddatum, of met
+**+ Volgende sprint** meteen de volgende van dezelfde lengte. Bij het genereren kies je een sprint en worden titel en
+datums vanzelf ingevuld. In de tijdlijn zie je waar een sprint begint.
+
 **Vragen.**
 - **+ Eigen vraag toevoegen**: typ een vraag aan jezelf; het antwoord geef je in het kaartje.
 - **✦ AI-vragen genereren**: de AI leest je gedachten en stelt drie open vragen. Hij geeft zelf geen antwoorden.

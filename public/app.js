@@ -57,8 +57,9 @@ function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 // Downloadt een document als .md, .txt of .docx (de server maakt het bestand).
-async function downloadDoc(id, format) {
-  const res = await fetch(`${base()}/documents/${id}/export/${format}`, { headers: { 'x-leerjournaal': '1' } });
+async function downloadDoc(id, format, type, slug) {
+  const root = type ? `/api/spaces/${type}/${slug}` : base();
+  const res = await fetch(`${root}/documents/${id}/export/${format}`, { headers: { 'x-leerjournaal': '1' } });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fout ${res.status}`);
   const name = (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || `document.${format}`;
   const a = document.createElement('a');
@@ -66,7 +67,7 @@ async function downloadDoc(id, format) {
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const dlLinks = id => `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}">.${f}</button>`).join(' ')}</span>`;
+const dlLinks = (id, type = '', slug = '') => `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>.${f}</button>`).join(' ')}</span>`;
 
 // Minimale Markdown-weergave (koppen, lijsten, vet, cursief, citaten, alinea's)
 function md(src) {
@@ -106,6 +107,7 @@ const spaceButton = (s, extra = '') => {
 const byRecent = (a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.lastEntry || a.createdAt || '');
 
 function renderSidebar() {
+  const ad = $('#all-docs-btn'); if (ad) ad.classList.toggle('active', state.mainMode === 'docs');
   const archived = state.spaces.filter(s => s.archived).sort(byRecent);
   const box = $('#archive');
   if (box) {
@@ -142,6 +144,7 @@ document.addEventListener('click', async e => {
 
 // ---------- ruimte openen ----------
 async function openSpace(type, slug, view = 'gedachten') {
+  state.mainMode = null;
   try {
     state.current = await api('GET', `/api/spaces/${type}/${slug}`);
     state.view = view; state.replyTo = null; state.composeMode = 'gedachte'; state.editing = null;
@@ -224,7 +227,13 @@ $('#main').addEventListener('click', async e => {
     if (a === 'close-doc') { state.openDoc = null; state.docEdit = false; renderDocs(); }
     if (a === 'edit-doc') { state.docEdit = true; renderDocs(); }
     if (a === 'save-doc') await saveDoc(t.dataset.as);
-    if (a === 'dl') await downloadDoc(t.dataset.id, t.dataset.format);
+    if (a === 'dl') await downloadDoc(t.dataset.id, t.dataset.format, t.dataset.type, t.dataset.slug);
+    if (a === 'open-hit') return openHit(t.dataset);
+    if (a === 'docs-filter') { state.docsFilter = t.dataset.filter; return renderAllDocs(); }
+    if (a === 'sprint-add') return addSprint();
+    if (a === 'sprint-next') return nextSprint();
+    if (a === 'sprint-del') return saveSprints((state.current.meta.sprints || []).filter(x => x.id !== t.dataset.id));
+    if (a === 'sprint-edit') return editSprint(t.dataset.id);
     if (a === 'doc-format') { state.docFormat = t.dataset.format; try { localStorage.setItem('lj-docformat', state.docFormat); } catch {} renderDocs(); }
     if (a === 'save-template') { state.current.meta = await api('PUT', base(), { template: $('#template-input').value }); toast('Template opgeslagen'); }
     if (a === 'reset-template') { $('#template-input').value = state.current.defaultTemplate; toast('Standaardtemplate teruggezet. Vergeet niet op te slaan.'); }
@@ -238,7 +247,11 @@ function renderThread(scroll = true) {
   let html = '', lastDay = null;
   for (const e of c.entries) {
     const day = dayKey(e.id);
-    if (day !== lastDay) { html += `<div class="divider">${dayLabel(day)}</div>`; lastDay = day; }
+    if (day !== lastDay) {
+      const sp = (c.meta.sprints || []).filter(x => x.from <= day && (lastDay ? x.from > lastDay : x.to >= day));
+      html += `<div class="divider">${dayLabel(day)}${sp.length ? ` <span class="sprint-tag">${sp.map(x => esc(x.name)).join(', ')} begint</span>` : ''}</div>`;
+      lastDay = day;
+    }
     html += e.kind === 'vraag' ? questionCard(e) : thoughtCard(e, byId);
   }
   if (!c.entries.length) html = `<div class="empty-state"><h1>Nog leeg</h1><p>Typ hieronder je eerste gedachte. Elke gedachte wordt apart opgeslagen met de datum en tijd.</p></div>`;
@@ -448,15 +461,22 @@ async function renderDocs() {
     state.docs = await api('GET', `${base()}/documents`);
     const today = new Date(); const twoWeeks = new Date(Date.now() - 13 * 864e5);
     const ai = state.status?.aiEnabled;
+    const isProject = state.current.type === 'projecten';
+    const sprints = state.current.meta.sprints || [];
+    const todayKey = isoDay(today);
+    // Standaard de lopende sprint, anders de laatst afgelopen.
+    const cur = sprints.find(x => x.from <= todayKey && todayKey <= x.to) || [...sprints].reverse().find(x => x.to < todayKey) || null;
     inner.innerHTML = `
       <div class="panel">
         <h2>Document genereren</h2>
         <div class="sub">De AI ordent alleen jouw eigen gedachten en antwoorden volgens het template van ${state.current.type === 'projecten' ? 'dit project' : 'deze chat'}. Hij voegt niets toe.</div>
         ${ai ? '' : '<div class="notice">Er is geen API-sleutel ingesteld. Gebruik "Kopieer prompt", plak die in Claude, en zet het resultaat terug via "Plak resultaat".</div>'}
+        ${sprints.length ? `<div class="form-row"><label class="field grow">Periode
+          <select id="doc-sprint"><option value="">Eigen periode kiezen</option>${sprints.map(x => `<option value="${x.id}" ${x.id === cur?.id ? 'selected' : ''}>${esc(x.name)} (${x.from.slice(8)}-${x.from.slice(5, 7)} t/m ${x.to.slice(8)}-${x.to.slice(5, 7)})</option>`).join('')}</select></label></div>` : ''}
         <div class="form-row">
-          <label class="field grow">Titel<input id="doc-title" value="${state.current.type === 'projecten' ? 'Sprint' : esc(state.current.meta.name)}"></label>
-          <label class="field">Van<input type="date" id="doc-from" value="${isoDay(twoWeeks)}"></label>
-          <label class="field">Tot en met<input type="date" id="doc-to" value="${isoDay(today)}"></label>
+          <label class="field grow">Titel<input id="doc-title" value="${cur ? esc(cur.name) : state.current.type === 'projecten' ? 'Sprint' : esc(state.current.meta.name)}"></label>
+          <label class="field">Van<input type="date" id="doc-from" value="${cur ? cur.from : isoDay(twoWeeks)}"></label>
+          <label class="field">Tot en met<input type="date" id="doc-to" value="${cur ? cur.to : isoDay(today)}"></label>
         </div>
         <div class="form-row">
           <button class="btn primary" data-action="gen-doc" ${ai ? '' : 'disabled'}>Genereer ruwe versie</button>
@@ -464,6 +484,7 @@ async function renderDocs() {
           <button class="btn ghost" data-action="paste-doc">Plak resultaat</button>
         </div>
       </div>
+      ${isProject ? sprintsPanel(sprints, todayKey) : ''}
       <div class="panel">
         <h2>Documenten</h2>
         ${state.docs.length ? `<div class="doc-list">${state.docs.map(d => `
@@ -474,7 +495,65 @@ async function renderDocs() {
             ${dlLinks(d.id)}
           </div>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}
       </div>`;
+    const sel = $('#doc-sprint');
+    if (sel) sel.addEventListener('change', () => {
+      const x = sprints.find(y => y.id === sel.value); if (!x) return;
+      $('#doc-title').value = x.name; $('#doc-from').value = x.from; $('#doc-to').value = x.to;
+    });
   } catch (e) { fail(e); }
+}
+
+// ---------- sprints ----------
+function nextSprintName(list) {
+  const last = list.at(-1); const n = last && (last.name.match(/(\d+)\s*$/) || [])[1];
+  return n ? last.name.replace(/\d+\s*$/, String(Number(n) + 1)) : `Sprint ${list.length + 1}`;
+}
+function sprintsPanel(sprints, todayKey) {
+  const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  return `<div class="panel">
+    <h2>Sprints</h2>
+    <div class="sub">Vaste periodes voor dit project. Kies er een bij het genereren, dan worden titel en datums vanzelf ingevuld.</div>
+    ${sprints.length ? `<div class="sprint-list">${sprints.map(x => `<div class="sprint-row${x.from <= todayKey && todayKey <= x.to ? ' now' : ''}">
+        <span class="sprint-name">${esc(x.name)}${x.from <= todayKey && todayKey <= x.to ? ' <span class="badge project">nu</span>' : ''}</span>
+        <span class="doc-date">${fmt(x.from)} t/m ${fmt(x.to)}</span>
+        <span class="row-links"><button class="link" data-action="sprint-edit" data-id="${x.id}">Wijzig</button><button class="link danger" data-action="sprint-del" data-id="${x.id}">Verwijder</button></span>
+      </div>`).join('')}</div>` : ''}
+    <div class="form-row">
+      <label class="field grow">Naam<input id="sprint-name" placeholder="${esc(nextSprintName(sprints))}"></label>
+      <label class="field">Van<input type="date" id="sprint-from" value="${todayKey}"></label>
+      <label class="field">Tot en met<input type="date" id="sprint-to" value="${isoDay(new Date(Date.now() + 13 * 864e5))}"></label>
+      <button class="btn" data-action="sprint-add">Toevoegen</button>
+      ${sprints.length ? '<button class="btn ghost" data-action="sprint-next" title="Zelfde lengte, direct na de laatste sprint">+ Volgende sprint</button>' : ''}
+    </div>
+  </div>`;
+}
+async function saveSprints(list) {
+  state.current.meta = await api('PUT', base(), { sprints: list });
+  renderDocs(); if (state.view === 'gedachten') renderThread(false);
+}
+async function addSprint() {
+  const list = state.current.meta.sprints || [];
+  const name = $('#sprint-name').value.trim() || nextSprintName(list);
+  const from = $('#sprint-from').value, to = $('#sprint-to').value;
+  if (!from || !to || from > to) return toast('Kies een geldige begin- en einddatum', true);
+  await saveSprints([...list, { name, from, to }]); toast(`${name} toegevoegd`);
+}
+async function nextSprint() {
+  const list = state.current.meta.sprints || []; const last = list.at(-1); if (!last) return;
+  const day = 864e5, len = Math.round((Date.parse(last.to) - Date.parse(last.from)) / day);
+  const from = new Date(Date.parse(last.to) + day), to = new Date(from.getTime() + len * day);
+  const name = nextSprintName(list);
+  await saveSprints([...list, { name, from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }]); toast(`${name} toegevoegd`);
+}
+async function editSprint(id) {
+  const list = (state.current.meta.sprints || []).map(x => ({ ...x }));
+  const x = list.find(y => y.id === id); if (!x) return;
+  const name = prompt('Naam van de sprint:', x.name); if (name === null) return;
+  const from = prompt('Begindatum (JJJJ-MM-DD):', x.from); if (from === null) return;
+  const to = prompt('Einddatum (JJJJ-MM-DD):', x.to); if (to === null) return;
+  Object.assign(x, { name: name.trim() || x.name, from: from.trim(), to: to.trim() });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(x.from) || !/^\d{4}-\d{2}-\d{2}$/.test(x.to) || x.from > x.to) return toast('Ongeldige datum', true);
+  await saveSprints(list); toast('Sprint gewijzigd');
 }
 
 function renderOpenDoc(inner) {
@@ -549,6 +628,84 @@ function renderTemplate() {
       <textarea class="doc-editor template-editor" id="template-input">${esc(state.current.meta.template || '')}</textarea>
       <div class="row-end"><button class="btn ghost" data-action="reset-template">Standaardtemplate</button><button class="btn primary" data-action="save-template">Opslaan</button></div>
     </div></div></div>`;
+}
+
+// ---------- zoeken ----------
+let searchTimer;
+$('#search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  searchTimer = setTimeout(() => q.length >= 2 ? runSearch(q) : (q.length === 0 && state.mainMode === 'search' ? goBack() : null), 250);
+});
+$('#search').addEventListener('keydown', e => { if (e.key === 'Escape') { e.target.value = ''; goBack(); } });
+
+function goBack() {
+  state.mainMode = null;
+  if (state.current) { renderSidebar(); render(); }
+  else $('#main').innerHTML = '<div class="empty-state"><h1>Welkom bij je leerjournaal</h1><p>Kies links een project of chat.</p></div>';
+}
+
+function highlight(text, q) {
+  const t = esc(text); if (!q) return t;
+  const f = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const i = f(text).indexOf(f(q)); if (i < 0) return t;
+  return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+}
+
+async function runSearch(q) {
+  state.mainMode = 'search';
+  const kindLabel = { gedachte: 'Gedachte', vraag: 'Vraag', document: 'Document', ruimte: 'Project/chat' };
+  try {
+    const { results } = await api('GET', `/api/search?q=${encodeURIComponent(q)}`);
+    if ($('#search').value.trim() !== q) return; // er is intussen verder getypt
+    $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Zoeken</h1>
+      <div class="sub">${results.length ? `${results.length}${results.length === 100 ? '+' : ''} resultaten` : 'Niets gevonden'} voor “${esc(q)}”</div></div>
+      <div class="page"><div class="page-inner">
+        ${results.map(r => `<button class="hit" data-action="open-hit" data-type="${r.type}" data-slug="${esc(r.slug)}" data-kind="${r.kind}" data-id="${r.id || ''}">
+          <span class="hit-head"><span class="badge ${r.type === 'projecten' ? 'project' : 'chat'}">${esc(r.spaceName)}</span>
+            <span class="hit-kind">${kindLabel[r.kind] || r.kind}${r.docKind ? ` · ${r.docKind === 'eind' ? 'eindversie' : 'ruwe versie'}` : ''}</span>
+            ${r.createdAt ? `<span class="doc-date">${fmtDateTime(r.createdAt)}</span>` : ''}${r.archived ? '<span class="doc-date">· archief</span>' : ''}</span>
+          ${r.title ? `<span class="hit-title">${highlight(r.title, q)}</span>` : ''}
+          ${r.snippet ? `<span class="hit-snippet">${highlight(r.snippet, q)}</span>` : ''}
+        </button>`).join('')}
+      </div></div>`;
+  } catch (e) { fail(e); }
+}
+
+async function openHit(d) {
+  state.mainMode = null;
+  if (d.kind === 'document') {
+    await openSpace(d.type, d.slug, 'documenten');
+    state.openDoc = await api('GET', `${base()}/documents/${d.id}`); renderDocs();
+  } else {
+    await openSpace(d.type, d.slug);
+    if (d.id) setTimeout(() => jumpTo(d.id), 150);
+  }
+}
+
+// ---------- alle documenten ----------
+$('#all-docs-btn').addEventListener('click', () => { state.docsFilter = state.docsFilter || 'alle'; renderAllDocs(); });
+async function renderAllDocs() {
+  state.mainMode = 'docs'; state.current = null; renderSidebar();
+  $('#all-docs-btn').classList.add('active');
+  $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Alle documenten</h1>
+    <div class="sub">Alle ruwe versies en eindversies uit al je projecten en chats.</div></div>
+    <div class="page"><div class="page-inner" id="all-docs"><div class="hint">Laden…</div></div></div>`;
+  try {
+    const docs = await api('GET', '/api/documents');
+    const f = state.docsFilter || 'alle';
+    const list = docs.filter(d => f === 'alle' || d.kind === f);
+    $('#all-docs').innerHTML = `
+      <div class="seg">${[['alle', `Alle (${docs.length})`], ['ruw', 'Ruwe versies'], ['eind', 'Eindversies']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-action="docs-filter" data-filter="${k}">${l}</button>`).join('')}</div>
+      <div class="panel">${list.length ? `<div class="doc-list">${list.map(d => `
+        <div class="doc-row all">
+          <button class="doc-title link-like" data-action="open-hit" data-kind="document" data-type="${d.type}" data-slug="${esc(d.slug)}" data-id="${d.id}">${esc(d.title)}</button>
+          <span class="doc-space">${esc(d.spaceName)}${d.archived ? ' · archief' : ''}</span>
+          <span><span class="badge ${d.kind}">${d.kind === 'eind' ? 'Eindversie' : 'Ruwe versie'}</span></span>
+          <span class="doc-date">${d.createdAt ? fmtDateTime(d.createdAt) : ''}</span>
+          ${dlLinks(d.id, d.type, d.slug)}
+        </div>`).join('')}</div>` : '<div class="hint">Nog geen documenten.</div>'}</div>`;
+  } catch (e) { fail(e); }
 }
 
 // ---------- sync & thema ----------

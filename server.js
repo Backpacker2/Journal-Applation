@@ -113,6 +113,9 @@ route('POST', '/api/update', async () => {
   return r;
 });
 
+route('GET', '/api/search', async (p, b, url) => ({ query: url.searchParams.get('q') || '', results: store.search(url.searchParams.get('q') || '') }));
+route('GET', '/api/documents', async () => store.allDocs());
+
 route('GET', '/api/spaces', async () => { loadExtraKeys(ring, cfg, true); return store.listSpaces(); });
 
 route('POST', '/api/spaces', async (p, body) => {
@@ -228,7 +231,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const params = Object.fromEntries(Object.entries(m.groups || {}).map(([k, v]) => [k, decodeURIComponent(v)]));
       const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
-      return send(res, 200, await r.handler(params, body));
+      return send(res, 200, await r.handler(params, body, url));
     } catch (e) {
       if (!e.status) console.error(e);
       return send(res, e.status || 500, { error: e.message });

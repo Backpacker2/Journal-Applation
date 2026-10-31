@@ -265,3 +265,28 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .archive-toggle:hover { color: #c3c8d6; }
 .archive-toggle .count { margin-left: auto; letter-spacing: 0; }
 .space-item.archived { opacity: .65; }
+
+/* ---------- zoeken, alle documenten, sprints ---------- */
+.search-wrap { padding: 0 2px 8px; }
+.search-wrap input { width: 100%; background: #1a1d27; border: 1px solid #2a2f40; border-radius: 8px; padding: 8px 10px; color: #e8eaf0; font-size: 13px; outline: none; }
+.search-wrap input:focus { border-color: var(--accent); }
+.nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; text-align: left; color: #b4bacb; padding: 8px 10px; border-radius: 8px; }
+.nav-item:hover, .nav-item.active { background: var(--side-hover); color: #fff; }
+.nav-ico { width: 8px; display: inline-flex; justify-content: center; font-size: 12px; color: #6e7488; }
+.hit { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: inherit; }
+.hit:hover { border-color: var(--accent); }
+.hit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.hit-kind { color: var(--muted); font-weight: 600; }
+.hit-title { font-weight: 700; }
+.hit-snippet { color: var(--muted); font-size: 13px; line-height: 1.5; }
+mark { background: rgba(224, 166, 69, 0.35); color: inherit; border-radius: 3px; padding: 0 1px; }
+.doc-row.all { grid-template-columns: 1fr 170px 100px 120px auto; }
+.doc-space { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sprint-list { display: flex; flex-direction: column; }
+.sprint-row { display: grid; grid-template-columns: 1fr 170px auto; gap: 12px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.sprint-row:last-child { border-bottom: 0; }
+.sprint-name { font-weight: 600; }
+.row-links { display: inline-flex; gap: 12px; }
+.sprint-tag { color: var(--accent); font-weight: 700; }
+select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+@media (max-width: 760px) { .doc-row.all { grid-template-columns: 1fr auto; } .doc-row.all .doc-space { display: none; } }
