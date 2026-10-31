@@ -128,7 +128,8 @@ route('GET', '/api/spaces/:type/:slug', async ({ type, slug }) => ({
 
 route('PUT', '/api/spaces/:type/:slug', async ({ type, slug }, body) => {
   const meta = store.updateMeta(type, slug, body);
-  await git.commit(`Ruimte bijgewerkt: ${type}/${slug}`);
+  const what = typeof body.archived === 'boolean' ? (body.archived ? 'gearchiveerd' : 'uit archief gehaald') : 'bijgewerkt';
+  await git.commit(`Ruimte ${what}: ${type}/${slug}`);
   return meta;
 });
 
@@ -142,6 +143,13 @@ route('PUT', '/api/spaces/:type/:slug/entries/:id', async ({ type, slug, id }, b
   const e = store.updateEntry(type, slug, id, body);
   await git.commit(`Bijgewerkt: ${type}/${slug}/${id}`);
   return e;
+});
+
+// Verwijderen van één of meer gedachten/vragen: { ids: [...] }
+route('POST', '/api/spaces/:type/:slug/entries/delete', async ({ type, slug }, body) => {
+  const r = store.deleteEntries(type, slug, body.ids);
+  if (r.deleted) await git.commit(`${r.deleted === 1 ? 'Gedachte' : r.deleted + ' gedachten'} verwijderd: ${type}/${slug}`);
+  return r;
 });
 
 route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }) => {

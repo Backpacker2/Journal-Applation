@@ -245,3 +245,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .link-like { background: none; border: 0; padding: 0; text-align: left; color: var(--ink); font-weight: 600; }
 .link-like:hover { color: var(--accent); }
 .doc-raw { white-space: pre-wrap; word-wrap: break-word; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0; }
+
+/* ---------- berichten beheren en archief ---------- */
+.entry-title { font-weight: 700; font-size: 15px; }
+.link.danger:hover, .btn.danger { color: var(--red); }
+.btn.danger:hover { border-color: var(--red); }
+.quote.gone { cursor: default; background: var(--card-2); border-left-color: var(--line); }
+.quote.gone .qhead { color: var(--faint); font-style: italic; }
+.card[data-sel] { cursor: pointer; user-select: none; }
+.card.selected { box-shadow: 0 0 0 2px var(--accent); }
+.sel-box { width: 16px; height: 16px; margin: 0 4px 0 0; accent-color: var(--accent); pointer-events: none; align-self: center; }
+.select-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.spacer-h { flex: 1; }
+.header-top > div:first-child { min-width: 0; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+@media (max-width: 1100px) { .header-actions .btn.ghost { padding: 5px 8px; } }
+.archive { margin-top: 14px; }
+.archive-toggle { background: none; border: 0; color: #6e7488; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; display: flex; gap: 6px; align-items: center; width: 100%; }
+.archive-toggle:hover { color: #c3c8d6; }
+.archive-toggle .count { margin-left: auto; letter-spacing: 0; }
+.space-item.archived { opacity: .65; }

@@ -12,6 +12,9 @@ const state = {
   docs: [],
   openDoc: null,
   docEdit: false,
+  selecting: false,     // meerdere berichten selecteren
+  selected: new Set(),
+  showArchive: (() => { try { return localStorage.getItem('lj-archive') === '1'; } catch { return false; } })(),
   docFormat: (() => { try { return localStorage.getItem('lj-docformat') || 'preview'; } catch { return 'preview'; } })(),
   status: null
 };
@@ -92,21 +95,36 @@ async function loadSpaces() {
   state.spaces = await api('GET', '/api/spaces');
   renderSidebar();
 }
-function renderSidebar() {
-  for (const type of ['projecten', 'chats']) {
-    const items = state.spaces.filter(s => s.type === type).sort((a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.lastEntry || a.createdAt || ''));
-    $('#list-' + type).innerHTML = items.length ? items.map(s => {
-      if (s.locked) return `<button class="space-item locked" data-open-keys="1" title="Versleuteld met een sleutel die ontbreekt">
+const spaceButton = (s, extra = '') => {
+  if (s.locked) return `<button class="space-item locked" data-open-keys="1" title="Versleuteld met een sleutel die ontbreekt">
         <span class="dot"></span><span class="name">Vergrendeld · sleutel ontbreekt</span></button>`;
-      const active = state.current && state.current.type === type && state.current.slug === s.slug;
-      return `<button class="space-item${active ? ' active' : ''}" data-type="${type}" data-slug="${esc(s.slug)}">
-        <span class="dot" style="background:${type === 'projecten' ? 'var(--accent)' : 'var(--green)'}"></span>
+  const active = state.current && state.current.type === s.type && state.current.slug === s.slug;
+  return `<button class="space-item${active ? ' active' : ''}${extra}" data-type="${s.type}" data-slug="${esc(s.slug)}">
+        <span class="dot" style="background:${s.type === 'projecten' ? 'var(--accent)' : 'var(--green)'}"></span>
         <span class="name">${esc(s.name)}</span><span class="count">${s.count ?? ''}</span></button>`;
-    }).join('') : `<div class="space-empty">${type === 'projecten' ? 'Nog geen projecten' : 'Nog geen chats'}</div>`;
+};
+const byRecent = (a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.lastEntry || a.createdAt || '');
+
+function renderSidebar() {
+  const archived = state.spaces.filter(s => s.archived).sort(byRecent);
+  const box = $('#archive');
+  if (box) {
+    box.hidden = !archived.length;
+    box.innerHTML = `<button class="archive-toggle" data-action-side="toggle-archive">${state.showArchive ? '▾' : '▸'} Archief <span class="count">${archived.length}</span></button>
+      ${state.showArchive ? `<nav class="space-list">${archived.map(s => spaceButton(s, ' archived')).join('')}</nav>` : ''}`;
+  }
+  for (const type of ['projecten', 'chats']) {
+    const items = state.spaces.filter(s => s.type === type && !s.archived).sort(byRecent);
+    $('#list-' + type).innerHTML = items.length ? items.map(s => spaceButton(s)).join('') : `<div class="space-empty">${type === 'projecten' ? 'Nog geen projecten' : 'Nog geen chats'}</div>`;
   }
 }
 document.addEventListener('click', async e => {
   if (e.target.closest('[data-open-keys]')) return openKeys();
+  if (e.target.closest('[data-action-side="toggle-archive"]')) {
+    state.showArchive = !state.showArchive;
+    try { localStorage.setItem('lj-archive', state.showArchive ? '1' : '0'); } catch {}
+    return renderSidebar();
+  }
   const item = e.target.closest('.space-item');
   if (item) return openSpace(item.dataset.type, item.dataset.slug);
   const nw = e.target.closest('[data-new]');
@@ -127,7 +145,7 @@ async function openSpace(type, slug, view = 'gedachten') {
   try {
     state.current = await api('GET', `/api/spaces/${type}/${slug}`);
     state.view = view; state.replyTo = null; state.composeMode = 'gedachte'; state.editing = null;
-    state.openDoc = null; state.docEdit = false;
+    state.openDoc = null; state.docEdit = false; state.selecting = false; state.selected.clear();
     try { localStorage.setItem('lj-last', `${type}/${slug}`); } catch {}
     renderSidebar(); render();
   } catch (e) { fail(e); }
@@ -140,10 +158,14 @@ function render() {
     <div class="header-wrap">
       <div class="header-top">
         <div>
-          <h1>${esc(c.meta.name)} <span class="badge ${isProject ? 'project' : 'chat'}">${isProject ? 'Project' : 'Chat'}</span></h1>
+          <h1>${esc(c.meta.name)} <span class="badge ${isProject ? 'project' : 'chat'}">${isProject ? 'Project' : 'Chat'}</span>${c.meta.archived ? ' <span class="badge ruw">Gearchiveerd</span>' : ''}</h1>
           <div class="sub">${subLine(c)}</div>
         </div>
-        <button class="btn primary" data-action="goto-docs">Genereer document</button>
+        <div class="header-actions">
+          <button class="btn ghost small" data-action="rename-space" title="Naam wijzigen">Naam wijzigen</button>
+          <button class="btn ghost small" data-action="archive-space">${c.meta.archived ? 'Uit archief halen' : 'Archiveren'}</button>
+          <button class="btn primary" data-action="goto-docs">Genereer document</button>
+        </div>
       </div>
       <div class="tabs">
         <button class="tab ${state.view === 'gedachten' ? 'active' : ''}" data-view="gedachten">Gedachten</button>
@@ -160,6 +182,14 @@ function render() {
 }
 
 $('#main').addEventListener('click', async e => {
+  const card = state.selecting && e.target.closest('.card[data-sel]');
+  if (card && !e.target.closest('textarea')) {
+    const id = card.dataset.sel;
+    if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+    card.classList.toggle('selected', state.selected.has(id));
+    const cb = card.querySelector('.sel-box'); if (cb) cb.checked = state.selected.has(id);
+    return renderSelectBar();
+  }
   const t = e.target.closest('[data-view],[data-action]');
   if (!t) return;
   if (t.dataset.view) { state.view = t.dataset.view; state.openDoc = null; state.docEdit = false; return render(); }
@@ -168,6 +198,14 @@ $('#main').addEventListener('click', async e => {
     if (a === 'add-key') return addKey(t);
     if (a === 'rekey') return rekey(t);
     if (a === 'goto-docs') { state.view = 'documenten'; state.openDoc = null; return render(); }
+    if (a === 'rename-space') return renameSpace();
+    if (a === 'archive-space') return archiveSpace();
+    if (a === 'title-entry') return titleEntry(t.dataset.id);
+    if (a === 'delete-entry') return deleteEntries([t.dataset.id]);
+    if (a === 'select-mode') { state.selecting = !state.selecting; state.selected.clear(); return renderThread(false); }
+    if (a === 'select-all') { const all = state.current.entries.map(x => x.id); if (state.selected.size === all.length) state.selected.clear(); else all.forEach(id => state.selected.add(id)); return renderThread(false); }
+    if (a === 'delete-selected') return deleteEntries([...state.selected]);
+    if (a === 'share-selected') return shareEntries([...state.selected]);
     if (a === 'reply') { state.replyTo = t.dataset.id; state.composeMode = 'gedachte'; renderComposer(); $('#compose-input').focus(); }
     if (a === 'cancel-reply') { state.replyTo = null; renderComposer(); }
     if (a === 'jump') jumpTo(t.dataset.id);
@@ -212,41 +250,64 @@ function renderThread(scroll = true) {
   if (scroll) { const th = $('#thread'); th.scrollTop = th.scrollHeight; }
 }
 
+const selAttrs = e => state.selecting ? ` data-sel="${e.id}"` : '';
+const selBox = e => state.selecting ? `<input type="checkbox" class="sel-box" ${state.selected.has(e.id) ? 'checked' : ''} tabindex="-1" aria-label="Selecteren">` : '';
+const titleLine = e => e.title ? `<div class="entry-title">${esc(e.title)}</div>` : '';
+const manageLinks = e => `<button class="link" data-action="title-entry" data-id="${e.id}">${e.title ? 'Naam wijzigen' : 'Naam geven'}</button><button class="link danger" data-action="delete-entry" data-id="${e.id}">Verwijder</button>`;
+
 function thoughtCard(e, byId) {
   const parent = e.replyTo && byId[e.replyTo];
   const quote = parent ? `<button class="quote" data-action="jump" data-id="${parent.id}">
-      <span class="qhead">Reactie op ${dayLabel(dayKey(parent.id)).toLowerCase()} · ${time(parent.id)}</span>
-      <span class="qtext">${esc(parent.text || parent.question)}</span></button>` : '';
+      <span class="qhead">Reactie op ${dayLabel(dayKey(parent.id)).toLowerCase()} · ${time(parent.id)}${parent.title ? ` · ${esc(parent.title)}` : ''}</span>
+      <span class="qtext">${esc(parent.text || parent.question)}</span></button>`
+    : e.replyTo ? `<div class="quote gone"><span class="qhead">Reactie op een verwijderde gedachte</span></div>` : '';
   const editing = state.editing === e.id;
-  return `<div class="card" id="e-${e.id}">
-    <div class="meta"><span class="time">${time(e.id)}</span><span class="file">${e.id}.txt${e.updatedAt ? ' · bewerkt' : ''}</span></div>
+  return `<div class="card${state.selected.has(e.id) ? ' selected' : ''}" id="e-${e.id}"${selAttrs(e)}>
+    <div class="meta">${selBox(e)}<span class="time">${time(e.id)}</span><span class="file">${e.id}.txt${e.updatedAt ? ' · bewerkt' : ''}</span></div>
+    ${titleLine(e)}
     ${quote}
     ${editing
       ? `<textarea class="edit-area" id="edit-${e.id}">${esc(e.text)}</textarea>
          <div class="row-end"><button class="btn small ghost" data-action="cancel-edit">Annuleer</button><button class="btn small primary" data-action="save-thought" data-id="${e.id}">Opslaan</button></div>`
       : `<div class="text">${esc(e.text)}</div>
-         <div class="actions"><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button><button class="link" data-action="edit-thought" data-id="${e.id}">Bewerk</button></div>`}
+         ${state.selecting ? '' : `<div class="actions"><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button><button class="link" data-action="edit-thought" data-id="${e.id}">Bewerk</button>${manageLinks(e)}</div>`}`}
   </div>`;
 }
 
 function questionCard(e) {
   const isAi = e.source === 'ai';
   const editing = state.editing === e.id || !e.answer;
-  return `<div class="card qcard ${isAi ? 'ai' : 'ik'}" id="e-${e.id}">
-    <div class="meta"><span class="qlabel">${isAi ? 'Vraag van AI' : 'Eigen vraag'}</span><span class="file">${time(e.id)} · ${e.id}.txt</span></div>
+  return `<div class="card qcard ${isAi ? 'ai' : 'ik'}${state.selected.has(e.id) ? ' selected' : ''}" id="e-${e.id}"${selAttrs(e)}>
+    <div class="meta">${selBox(e)}<span class="qlabel">${isAi ? 'Vraag van AI' : 'Eigen vraag'}</span><span class="file">${time(e.id)} · ${e.id}.txt</span></div>
+    ${titleLine(e)}
     <div class="question">${esc(e.question)}</div>
     <div class="answer">
       <span class="lbl">Mijn antwoord</span>
-      ${editing
+      ${editing && !state.selecting
         ? `<textarea id="ans-${e.id}" placeholder="Typ je antwoord…">${esc(e.answer)}</textarea>
            <div class="row-end">${e.answer ? '<button class="btn small ghost" data-action="cancel-edit">Annuleer</button>' : ''}<button class="btn small primary" data-action="save-answer" data-id="${e.id}">Opslaan</button></div>`
-        : `<div class="text">${esc(e.answer)}</div><div class="actions"><button class="link" data-action="edit-answer" data-id="${e.id}">Bewerk antwoord</button><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button></div>`}
+        : `<div class="text">${esc(e.answer) || '<span class="hint">Nog niet beantwoord</span>'}</div>${state.selecting ? '' : `<div class="actions"><button class="link" data-action="edit-answer" data-id="${e.id}">Bewerk antwoord</button><button class="link accent" data-action="reply" data-id="${e.id}">Reageer</button></div>`}`}
     </div>
+    ${state.selecting ? '' : `<div class="actions">${manageLinks(e)}</div>`}
   </div>`;
+}
+
+function renderSelectBar() {
+  const el = $('#composer'); if (!el) return;
+  const n = state.selected.size, all = state.current.entries.length;
+  el.innerHTML = `<div class="select-bar">
+      <span><b>${n}</b> geselecteerd</span>
+      <button class="btn small ghost" data-action="select-all">${n === all && all ? 'Niets' : 'Alles'} selecteren</button>
+      <span class="spacer-h"></span>
+      <button class="btn small" data-action="share-selected" ${n ? '' : 'disabled'}>Delen</button>
+      <button class="btn small danger" data-action="delete-selected" ${n ? '' : 'disabled'}>Verwijderen</button>
+      <button class="btn small primary" data-action="select-mode">Klaar</button>
+    </div>`;
 }
 
 function renderComposer() {
   const c = state.current, el = $('#composer'); if (!el) return;
+  if (state.selecting) return renderSelectBar();
   const parent = state.replyTo && c.entries.find(e => e.id === state.replyTo);
   const isQ = state.composeMode === 'vraag';
   el.innerHTML = `
@@ -254,6 +315,7 @@ function renderComposer() {
     <div class="tools">
       <button class="btn small chip-ai" data-action="ai-questions">✦ AI-vragen genereren</button>
       <button class="btn small chip-own" data-action="mode-question">${isQ ? '← Terug naar gedachte' : '+ Eigen vraag toevoegen'}</button>
+      ${c.entries.length ? '<button class="btn small ghost" data-action="select-mode">☐ Selecteren</button>' : ''}
       ${isQ ? '<span class="mode-pill">Je typt nu een vraag aan jezelf. Het antwoord geef je in het kaartje.</span>' : ''}
     </div>
     <div class="input-row">
@@ -297,6 +359,65 @@ async function saveThought(id) {
   const updated = await api('PUT', `${base()}/entries/${id}`, { text });
   replaceEntry(updated); state.editing = null; renderThread(false);
 }
+async function titleEntry(id) {
+  const e = state.current.entries.find(x => x.id === id); if (!e) return;
+  const title = prompt('Naam voor dit bericht (leeg laten = geen naam):', e.title || '');
+  if (title === null) return;
+  replaceEntry(await api('PUT', `${base()}/entries/${id}`, { title }));
+  renderThread(false); toast(title.trim() ? 'Naam opgeslagen' : 'Naam verwijderd');
+}
+
+async function deleteEntries(ids) {
+  if (!ids.length) return;
+  const msg = ids.length === 1 ? 'Dit bericht verwijderen? Dit kun je in de app niet ongedaan maken.' : `${ids.length} berichten verwijderen? Dit kun je in de app niet ongedaan maken.`;
+  if (!confirm(msg)) return;
+  const r = await api('POST', `${base()}/entries/delete`, { ids });
+  state.current.entries = state.current.entries.filter(e => !ids.includes(e.id));
+  state.selected.clear();
+  if (!state.current.entries.length) state.selecting = false;
+  renderThread(false); bumpCount(-r.deleted);
+  toast(r.deleted === 1 ? 'Bericht verwijderd' : `${r.deleted} berichten verwijderd`);
+}
+
+function entriesAsText(ids) {
+  const pick = state.current.entries.filter(e => ids.includes(e.id));
+  const when = e => new Date(e.createdAt || `${e.id.slice(0, 10)}T${e.id.slice(11, 13)}:${e.id.slice(14, 16)}`).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${state.current.meta.name}\n\n` + pick.map(e => {
+    const head = `${when(e)}${e.title ? ` – ${e.title}` : ''}`;
+    return e.kind === 'vraag'
+      ? `${head}\nVraag${e.source === 'ai' ? ' (AI)' : ''}: ${e.question}\nAntwoord: ${e.answer || '(nog niet beantwoord)'}`
+      : `${head}\n${e.text}`;
+  }).join('\n\n');
+}
+
+async function shareEntries(ids) {
+  const text = entriesAsText(ids);
+  if (navigator.share) {
+    try { await navigator.share({ title: state.current.meta.name, text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  await navigator.clipboard.writeText(text);
+  toast(`${ids.length === 1 ? 'Bericht' : ids.length + ' berichten'} gekopieerd. Plak ze waar je wilt.`);
+}
+
+async function renameSpace() {
+  const name = prompt('Nieuwe naam:', state.current.meta.name);
+  if (!name || !name.trim() || name.trim() === state.current.meta.name) return;
+  state.current.meta = await api('PUT', base(), { name });
+  const s = state.spaces.find(x => x.type === state.current.type && x.slug === state.current.slug);
+  if (s) s.name = state.current.meta.name;
+  renderSidebar(); render(); toast('Naam gewijzigd');
+}
+
+async function archiveSpace() {
+  const archived = !state.current.meta.archived;
+  state.current.meta = await api('PUT', base(), { archived });
+  const s = state.spaces.find(x => x.type === state.current.type && x.slug === state.current.slug);
+  if (s) s.archived = archived;
+  renderSidebar(); render();
+  toast(archived ? 'Gearchiveerd. Je vindt hem onder Archief in de zijbalk.' : 'Uit het archief gehaald');
+}
+
 function replaceEntry(u) {
   const i = state.current.entries.findIndex(e => e.id === u.id);
   if (i >= 0) state.current.entries[i] = u;

@@ -99,6 +99,14 @@ later extra tabbladen (Kanban, Feedback). Chats zijn voor alles waar je even ove
 - **Reageer**: koppelt je nieuwe gedachte aan een eerdere; klik op het citaat om terug te springen.
 - **Bewerk**: pas een gedachte achteraf aan (git bewaart de oude versie).
 
+**Berichten beheren.** Onder elk bericht staan ook:
+- **Naam geven / Naam wijzigen**: geef een gedachte of vraag een korte titel. Die komt ook mee in het document.
+- **Verwijder**: haalt het bericht weg (in de git-geschiedenis blijft het versleuteld bestaan).
+- **☐ Selecteren** (boven het invoerveld): vink meerdere berichten aan en kies **Delen** (via het deelmenu, of gekopieerd naar je klembord) of **Verwijderen**.
+
+**Projecten en chats beheren.** Rechtsboven: **Naam wijzigen** en **Archiveren**. Een gearchiveerde chat of
+project blijft gewoon bestaan, maar staat in de zijbalk alleen nog onder **Archief**. Met **Uit archief halen** zet je hem terug.
+
 **Vragen.**
 - **+ Eigen vraag toevoegen**: typ een vraag aan jezelf; het antwoord geef je in het kaartje.
 - **✦ AI-vragen genereren**: de AI leest je gedachten en stelt drie open vragen. Hij geeft zelf geen antwoorden.
