@@ -121,6 +121,11 @@ datums vanzelf ingevuld. In de tijdlijn zie je waar een sprint begint.
 **Kanban (projecten).** Tabblad *Kanban* met de kolommen Backlog, Mee bezig, Waiting for review en Done. Typ een
 kaart onderaan een kolom en druk op Enter. Sleep kaarten tussen kolommen, of klik op een kaart om titel, beschrijving en
 kolom te wijzigen. Het bord wordt versleuteld opgeslagen (`kanban.txt`).
+Met veel kaarten blijft het overzichtelijk: kolommen staan naast elkaar (scroll opzij) en elke kolom scrolt zelf,
+zodat de pagina niet lang wordt. **Zoek in kaarten** filtert, **Compact** verbergt de beschrijvingen, en met **‹** klap je
+een kolom in (klik erop om hem weer uit te klappen). Met **+ Kolom** voeg je een kolom toe; bij een gekoppeld Trello-bord
+wordt dat een lijst in Trello. Heeft een gekoppeld bord geen kolom voor afgeronde kaarten, dan kun je met één klik een
+kolom *Done* toevoegen (Jira-kolommen pas je in Jira zelf aan).
 
 **Kanban koppelen met Trello of Jira.** Per project kun je het bord koppelen, bijvoorbeeld het groepsproject aan Jira
 en je persoonlijke project aan Trello.

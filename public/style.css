@@ -347,7 +347,6 @@ select { font: inherit; color: var(--ink); background: var(--bg); border: 1px so
 /* ---------- kanban ---------- */
 .board-wrap { display: flex; flex-direction: column; gap: 14px; }
 .notice.subtle { background: var(--accent-soft); color: var(--muted); }
-.board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
 .col { background: var(--card-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
 .col.drop { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .col header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; padding: 2px 4px; }
@@ -380,7 +379,7 @@ select { font: inherit; color: var(--ink); background: var(--bg); border: 1px so
 .link-grid { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .check input { accent-color: var(--accent); }
-@media (max-width: 760px) { .board { grid-template-columns: repeat(4, 78vw); } }
+
 
 /* ---------- instellingen ---------- */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -429,3 +428,21 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .conn details > summary { cursor: pointer; font-size: 12.5px; list-style: none; margin-bottom: 8px; }
 .conn details > summary::-webkit-details-marker { display: none; }
 .inline-select { background: var(--input, var(--card-2)); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; }
+
+/* ---------- kanban: werkbaar op een normaal scherm ---------- */
+.board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }
+.board > .col { flex: 0 0 272px; scroll-snap-align: start; max-height: var(--col-max, calc(100vh - 330px)); min-height: 0; }
+.board > .col .col-cards { overflow-y: auto; flex: 1 1 auto; min-height: 8px; padding-right: 2px; margin-right: -4px; }
+.col header .icon-btn { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 4px; margin-left: 6px; }
+.col header .icon-btn:hover { color: var(--ink); }
+.col header > span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col.collapsed { flex: 0 0 42px; padding: 10px 4px; align-items: center; cursor: pointer; gap: 10px; }
+.col.collapsed:hover { border-color: var(--accent); }
+.col.collapsed .count { color: var(--muted); font-size: 12px; font-weight: 700; }
+.col-vname { writing-mode: vertical-rl; font-weight: 700; font-size: 13px; white-space: nowrap; }
+.board-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.board-tools input[type=search] { width: 260px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); padding: 7px 10px; font: inherit; font-size: 13px; }
+.board.compact .k-desc-view { display: none; }
+.board.compact .kcard:not(.editing) { padding: 7px 10px; gap: 2px; }
+.board.compact .k-title-view { font-size: 13px; }
+@media (max-width: 760px) { .board > .col { flex-basis: 82vw; max-height: none; } .board > .col .col-cards { overflow: visible; } }

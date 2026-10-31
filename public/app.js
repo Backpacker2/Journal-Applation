@@ -245,6 +245,13 @@ $('#main').addEventListener('click', async e => {
     if (a === 'card-add') return addCard(t.dataset.column);
     if (a === 'card-edit') { if (e.target.closest('[data-stop]')) return; state.cardEdit = t.dataset.id; return drawBoard(); }
     if (a === 'board-refresh') return refreshBoard();
+    if (a === 'col-toggle') {
+      const v = boardView(), set = new Set(v.collapsed || []);
+      set.has(t.dataset.id) ? set.delete(t.dataset.id) : set.add(t.dataset.id);
+      saveBoardView({ collapsed: [...set] }); return drawBoard();
+    }
+    if (a === 'col-add-done') return addColumn('Done');
+    if (a === 'col-add') { const name = prompt('Naam van de nieuwe kolom'); if (name && name.trim()) await addColumn(name.trim()); return; }
     if (a === 'board-unlink') {
       if (!confirm(`Ontkoppelen van ${svcName(state.board.link.kind)}? De kaarten blijven hier staan, maar worden niet meer bijgewerkt.`)) return;
       applyBoardResult(await api('DELETE', `${base()}/board/link`)); return drawBoard();
@@ -747,6 +754,28 @@ async function renderBoard() {
   } catch (e) { fail(e); }
 }
 const svcName = k => (k === 'jira' ? 'Jira' : 'Trello');
+const fold = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const DONE_RE = /\b(done|klaar|afgerond|gereed|voltooid|finished|closed|complete[d]?)\b/i;
+// Weergave van het bord (filter, compact, ingeklapte kolommen): per project in deze browser.
+function boardView() {
+  try { return JSON.parse(localStorage.getItem(`lj-board-${state.current.type}-${state.current.slug}`) || '{}'); } catch { return {}; }
+}
+function saveBoardView(patch) {
+  const v = { ...boardView(), ...patch };
+  try { localStorage.setItem(`lj-board-${state.current.type}-${state.current.slug}`, JSON.stringify(v)); } catch {}
+  return v;
+}
+// Kolommen zo hoog als het scherm, zodat de pagina niet lang wordt; elke kolom scrolt zelf.
+function fitBoard() {
+  const bd = $('.board'); if (!bd) return;
+  const top = bd.getBoundingClientRect().top + (bd.closest('.page')?.scrollTop || 0);
+  bd.style.setProperty('--col-max', `${Math.max(320, innerHeight - top - 24)}px`);
+}
+addEventListener('resize', () => fitBoard());
+async function addColumn(name) {
+  const r = await api('POST', `${base()}/board/columns`, { name });
+  state.board = r.board; drawBoard(); toast(`Kolom “${name}” toegevoegd`);
+}
 // Verwerkt het antwoord van een kaart-actie: nieuw bord, en meldingen van Trello/Jira.
 function applyBoardResult(r) {
   if (r?.board) state.board = r.board;
@@ -808,11 +837,26 @@ async function drawLinkPanel(kind) {
 function drawBoard() {
   const b = state.board, el = $('#board'); if (!b || !el) return;
   const colOpts = cur => b.columns.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const view = boardView();
+  const q = fold(view.filter || '');
+  const match = c => !q || fold(`${c.title} ${c.description || ''} ${c.remote?.key || ''}`).includes(q);
+  const hasDone = b.columns.some(c => DONE_RE.test(c.name));
   el.innerHTML = `${linkBar(b)}
-    <div class="board">${b.columns.map(col => {
-      const cards = b.cards.filter(c => c.column === col.id);
+    ${b.link && !hasDone ? `<div class="notice subtle">Dit ${b.link.kind === 'jira' ? 'Jira-bord' : 'Trello-bord'} heeft geen kolom voor afgeronde kaarten.
+      ${b.link.kind === 'trello' ? '<button class="btn small" data-action="col-add-done">Kolom “Done” toevoegen in Trello</button>' : 'Voeg in Jira een kolom toe (Bordinstellingen → Kolommen) en klik daarna op Verversen.'}</div>` : ''}
+    <div class="board-tools">
+      <input type="search" id="board-filter" placeholder="Zoek in kaarten…" value="${esc(view.filter || '')}">
+      <label class="check"><input type="checkbox" id="board-compact" ${view.compact ? 'checked' : ''}> Compact</label>
+      <span class="spacer-h"></span>
+      ${b.link?.kind === 'jira' ? '' : '<button class="btn small ghost" data-action="col-add">+ Kolom</button>'}
+    </div>
+    <div class="board${view.compact ? ' compact' : ''}">${b.columns.map(col => {
+      const all = b.cards.filter(c => c.column === col.id), cards = all.filter(match);
+      const closed = (view.collapsed || []).includes(col.id);
+      if (closed) return `<section class="col collapsed" data-col="${col.id}" data-action="col-toggle" data-id="${col.id}" title="Uitklappen">
+        <span class="count">${all.length}</span><span class="col-vname">${esc(col.name)}</span></section>`;
       return `<section class="col" data-col="${col.id}">
-        <header><span>${esc(col.name)}</span><span class="count">${cards.length}</span></header>
+        <header><span>${esc(col.name)}</span><span class="count">${q ? `${cards.length}/` : ''}${all.length}</span><button class="icon-btn" data-action="col-toggle" data-id="${col.id}" title="Inklappen">‹</button></header>
         <div class="col-cards">
           ${cards.map(c => state.cardEdit === c.id ? `
             <div class="kcard editing">
@@ -836,6 +880,10 @@ function drawBoard() {
         <div class="col-add"><input placeholder="+ Kaart toevoegen" data-add="${col.id}"><button class="btn small" data-action="card-add" data-column="${col.id}">Voeg toe</button></div>
       </section>`;
     }).join('')}</div>`;
+  fitBoard();
+  const f = $('#board-filter');
+  f.addEventListener('input', () => { saveBoardView({ filter: f.value }); const pos = f.selectionStart; drawBoard(); const nf = $('#board-filter'); nf.focus(); nf.setSelectionRange(pos, pos); });
+  $('#board-compact').addEventListener('change', e => { saveBoardView({ compact: e.target.checked }); drawBoard(); });
   el.querySelectorAll('[data-add]').forEach(inp => inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); addCard(inp.dataset.add).catch(fail); } }));
   // Slepen tussen kolommen (computer). Op een telefoon kies je de kolom in het bewerkscherm.
   el.querySelectorAll('.kcard[draggable]').forEach(card => {

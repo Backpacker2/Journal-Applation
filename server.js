@@ -267,6 +267,18 @@ route('DELETE', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, 
   const r = store.deleteCard(type, slug, id); await git.commit(`Kaart verwijderd: ${type}/${slug}`); return r;
 }));
 
+// Kolom toevoegen: lokaal, of als lijst in Trello (Jira-kolommen pas je in Jira aan).
+route('POST', '/api/spaces/:type/:slug/board/columns', async ({ type, slug }, body) => withBoard(type, slug, async () => {
+  const name = String(body.name || '').trim().slice(0, 60);
+  if (!name) throw Object.assign(new Error('Geef de kolom een naam.'), { status: 400 });
+  const b = store.getBoard(type, slug);
+  if (b.columns.some(c => c.name.toLowerCase() === name.toLowerCase())) throw Object.assign(new Error(`Er is al een kolom “${name}”.`), { status: 409 });
+  const col = b.link ? await adapterFor(b).addColumn(b.link.target, name) : { id: require('crypto').randomBytes(4).toString('hex'), name };
+  b.columns.push(col);
+  store.saveBoard(type, slug, b); await git.commit(`Kolom toegevoegd: ${type}/${slug}`);
+  return { board: b };
+}));
+
 // Koppelen, verversen, conflicten
 route('POST', '/api/spaces/:type/:slug/board/link', async ({ type, slug }, body) => withBoard(type, slug, async () => {
   const kind = body.kind === 'jira' ? 'jira' : 'trello';
