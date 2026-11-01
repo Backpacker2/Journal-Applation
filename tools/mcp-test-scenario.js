@@ -50,3 +50,12 @@ module.exports.more.push(async ({ call, project, check, write, rpc, modern }) =>
   const q = await call('vragen_toevoegen', { ruimte: project, vragen: ['Wat zou je de volgende keer anders doen?'] });
   check('vragen_toevoegen', !q.err, q.t);
 });
+module.exports.more.push(async ({ rpc, modern, check, project }) => {
+  const l = await rpc('prompts/list', modern({}));
+  const names = (l.result?.prompts || []).map(p => p.name);
+  check('opdrachten in het menu', ['document_maken', 'kaart_document', 'vragen_stellen'].every(n => names.includes(n)), names.join(', '));
+  const g = await rpc('prompts/get', modern({ name: 'document_maken', arguments: { ruimte: project, sprint: 'Sprint 2' } }));
+  check('prompts/get document_maken', /documentopdracht/.test(g.result?.messages?.[0]?.content?.text || ''));
+  const mis = await rpc('prompts/get', modern({ name: 'kaart_document', arguments: { ruimte: project } }));
+  check('verplicht argument ontbreekt → fout', !!mis.error);
+});

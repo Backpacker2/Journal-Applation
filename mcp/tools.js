@@ -326,8 +326,56 @@ tool({
   return `${vragen.length} ${vragen.length === 1 ? 'vraag' : 'vragen'} toegevoegd aan ${sp.name}. De gebruiker beantwoordt ze in Leerjournaal.`;
 });
 
-// ---------- kant-en-klare opdrachten ----------
+// ---------- kant-en-klare opdrachten (in het menu van Claude) ----------
 const prompts = [];
+const prompt = (def, build) => prompts.push({ ...def, build });
+const q = v => `“${String(v).trim()}”`;
+const saveStep = (ro, extra = '') => ro
+  ? 'Laat het document hieronder zien (opslaan kan niet: Leerjournaal staat in alleen-lezen-stand).'
+  : `Sla het op met document_opslaan als ruwe versie${extra}, en laat het daarna hier zien.`;
+
+prompt({
+  name: 'document_maken', title: 'Document maken (sprint of periode)',
+  description: 'Maakt een document van je gedachten in een project of chat, voor een sprint of periode, en zet het als ruwe versie in Leerjournaal.',
+  arguments: [
+    { name: 'ruimte', description: 'Naam van het project of de chat', required: true },
+    { name: 'sprint', description: 'Naam van de sprint (leeg = de periode hieronder, of de laatste twee weken)' },
+    { name: 'periode', description: 'Optioneel: JJJJ-MM-DD t/m JJJJ-MM-DD' }
+  ]
+}, (a, { readOnly }) => {
+  const m = String(a.periode || '').match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/);
+  const twoWeeks = new Date(Date.now() - 13 * 864e5).toISOString().slice(0, 10);
+  const scope = a.sprint ? `sprint ${q(a.sprint)}` : m ? `de periode ${m[1]} t/m ${m[2]}` : `de laatste twee weken (vanaf ${twoWeeks})`;
+  const args = a.sprint ? `sprint ${q(a.sprint)}` : m ? `van "${m[1]}" en tot "${m[2]}"` : `van "${twoWeeks}"`;
+  return `Maak een document van mijn Leerjournaal voor ${q(a.ruimte)}, ${scope}.
+1. Roep documentopdracht aan met ruimte ${q(a.ruimte)} en ${args}.
+2. Schrijf het document precies volgens die opdracht: alleen mijn eigen woorden, het template volgen, niets toevoegen.
+3. ${saveStep(readOnly, ' (met dezelfde titel en periode)')}
+4. Noem kort welke onderdelen van het template geen input hadden, zodat ik weet waar ik nog over kan schrijven.`;
+});
+
+prompt({
+  name: 'kaart_document', title: 'Document over een kaart (ticket)',
+  description: 'Maakt een document over één kaart van het Kanbanbord: alleen de gekoppelde gedachten, feedback en documenten.',
+  arguments: [
+    { name: 'ruimte', description: 'Naam van het project', required: true },
+    { name: 'kaart', description: 'Sleutel (bijv. PROJ-22), nummer of titel van de kaart', required: true }
+  ]
+}, (a, { readOnly }) => `Maak een document over kaart ${q(a.kaart)} in mijn Leerjournaal-project ${q(a.ruimte)}.
+1. Roep documentopdracht aan met ruimte ${q(a.ruimte)} en kaart ${q(a.kaart)}.
+2. Schrijf het document precies volgens die opdracht: alleen mijn eigen woorden; de kaart zelf is alleen context.
+3. ${saveStep(readOnly, ', gekoppeld aan dezelfde kaart')}`);
+
+prompt({
+  name: 'vragen_stellen', title: 'Vragen over mijn gedachten',
+  description: 'Laat Claude je recente gedachten lezen en drie open vragen stellen die je helpen verder te denken. De vragen komen in Leerjournaal; jij beantwoordt ze.',
+  arguments: [
+    { name: 'ruimte', description: 'Naam van het project of de chat', required: true },
+    { name: 'chat', description: 'Optioneel: chat binnen het project' }
+  ]
+}, (a, { readOnly }) => `Lees mijn gedachten van de laatste twee weken in Leerjournaal ${q(a.ruimte)}${a.chat ? `, chat ${q(a.chat)}` : ''} (gedachten_lezen).
+Stel daarna precies drie korte, open vragen die mij helpen mijn eigen redenering, keuzes, twijfels, fouten en wat ik geleerd heb onder woorden te brengen. Geef zelf geen antwoorden, meningen of adviezen, en herhaal geen vragen die er al staan.
+${readOnly ? 'Zet de vragen hier neer.' : `Zet ze met vragen_toevoegen in ${q(a.ruimte)}${a.chat ? ` (chat ${q(a.chat)})` : ''} en laat ze hier ook zien.`}`);
 
 // ---------- uitleg voor Claude ----------
 const INSTRUCTIONS = readOnly => `Leerjournaal is het persoonlijke leerjournaal van de gebruiker: gedachten per project (school/werk) of chat (persoonlijk), versleuteld opgeslagen.
