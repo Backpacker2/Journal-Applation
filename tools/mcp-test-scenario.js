@@ -24,3 +24,9 @@ module.exports = async ({ rpc, modern, check, text, names, write }) => {
   for (const extra of module.exports.more || []) await extra({ call, project, chat, write, check, rpc, modern, text, names });
 };
 module.exports.more = [];
+module.exports.more.push(async ({ call, project, check }) => {
+  const o = await call('documentopdracht', { ruimte: project, van: '2026-01-01' });
+  check('documentopdracht', !o.err && /Strikte regels/.test(o.t) && /document_opslaan/.test(o.t), `${o.t.length} tekens`);
+  const leeg = await call('documentopdracht', { ruimte: project, van: '2030-01-01' });
+  check('documentopdracht zonder notities geeft uitleg', /geen notities/.test(leeg.t));
+});

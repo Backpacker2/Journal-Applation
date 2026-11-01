@@ -238,6 +238,47 @@ tool({
   return clip([`${hits.length} resultaten voor “${zoekterm}”:`, ...hits.map(h => `- ${h.spaceName} · ${h.kind === 'document' ? `document “${h.title}” (id ${h.id})` : `${h.kind} ${day(h.id)} ${hhmm(h.id)}`}: ${h.snippet}`)].join('\n'));
 });
 
+// ---------- documentopdracht ----------
+// Precies dezelfde opdracht als "Kopieer prompt" in de app: regels + template + notities (+ feedback,
+// + bij een kaart de gekoppelde documenten). Claude schrijft daarna het document en slaat het op.
+async function documentTask(args) {
+  const sp = await space(args.ruimte);
+  const p = period(sp, args);
+  const body = { from: p.from || '', to: p.to || '' };
+  let title = args.titel;
+  if (args.chats?.length) {
+    if (sp.type !== 'projecten') throw new Error('Chats kiezen kan alleen binnen een project.');
+    body.threads = args.chats.map(n => threadOf(sp, n).id);
+  }
+  let card = null;
+  if (args.kaart) { card = cardOf(await boardOf(sp), args.kaart); body.card = card.id; }
+  if (!title) title = card ? cardName(card) : args.sprint ? sprintOf(sp, args.sprint).name : sp.name;
+  body.title = title;
+  const r = await api('POST', `${sp.base}/prompt`, body);
+  return { sp, p, title, card, count: r.count, prompt: r.prompt };
+}
+const DOC_ARGS = {
+  ruimte: RUIMTE, ...PERIODE,
+  chats: { type: 'array', items: { type: 'string' }, description: 'Alleen deze chats binnen het project ("Algemeen" en/of namen). Leeg = alle.' },
+  kaart: { type: 'string', description: 'Document over één kaart: sleutel (PROJ-22), nummer of titel. Alleen wat eraan gekoppeld is gaat mee.' },
+  titel: { type: 'string', description: 'Titel van het document (standaard: sprint, kaart of projectnaam).' }
+};
+
+tool({
+  name: 'documentopdracht', title: 'Opdracht voor een document',
+  description: 'Geeft de volledige opdracht om een document te schrijven, precies zoals de knop "Kopieer prompt" in Leerjournaal: de regels (alleen de eigen woorden van de gebruiker), het template van het project of de chat, en de notities uit de gekozen periode, sprint, chats of kaart. Volg die opdracht exact en sla het resultaat op met document_opslaan.',
+  inputSchema: schema(DOC_ARGS, ['ruimte'])
+}, async args => {
+  const t = await documentTask(args);
+  if (!t.count) return `Er zijn geen notities voor ${t.sp.name} in deze selectie (${t.p.label}). Kies een andere periode, sprint of kaart.`;
+  return clip(`${t.prompt}
+
+---
+Opslaan: schrijf het document volgens de opdracht hierboven en roep daarna document_opslaan aan met
+ruimte "${t.sp.name}", titel "${t.title}", soort "ruw"${t.p.from ? `, van "${t.p.from}"` : ''}${t.p.to ? `, tot "${t.p.to}"` : ''}${t.card ? `, kaart "${cardName(t.card)}"` : ''}.
+Laat het document daarna aan de gebruiker zien; hij maakt er zelf een eindversie van.`);
+});
+
 // ---------- kant-en-klare opdrachten ----------
 const prompts = [];
 
