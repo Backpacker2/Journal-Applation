@@ -1521,6 +1521,17 @@ async function openSettings() {
         <div class="sub">Stel een of meer AI's in (ook meerdere sleutels). De actieve AI gebruiken de AI-knoppen; bij het genereren kun je er ook een kiezen. Sleutels blijven op deze computer. Zonder AI werkt alles via Kopieer prompt.</div>
         <div id="ai-list"><div class="hint">Laden…</div></div>
       </div>
+      <div class="panel" id="mcp-panel"><h2>Claude (zonder API-sleutel)</h2>
+        <div class="sub">Met de MCP-koppeling leest Claude (de desktop-app of Claude Code) je gedachten en zet hij documenten terug in Leerjournaal. Dat gaat via je eigen Claude-abonnement; een API-sleutel is niet nodig. Met canvas-mcp erbij kan Claude het document in hetzelfde gesprek in Portflow zetten (na jouw bevestiging).</div>
+        <ol class="steps">
+          <li>Op de computer met de Claude-app: dubbelklik <b>Claude-koppelen.command</b> in je leerjournaal-map, of voer uit:
+            <pre class="cmd">cd pad/naar/leerjournaal &amp;&amp; git pull
+bash tools/mcp-installeren.sh ${esc(location.origin)}</pre></li>
+          <li>Sluit de Claude-app helemaal af en open hem opnieuw.</li>
+          <li>Vraag in Claude bijvoorbeeld: <i>“Maak met Leerjournaal het document voor Sprint 2 van mijn project”</i>, of kies via <b>+</b> een kant-en-klare opdracht.</li>
+        </ol>
+        <div class="hint">Claude kan lezen, documenten opslaan (altijd als nieuwe versie) en vragen toevoegen. Verwijderen of gedachten schrijven kan niet. Alleen lezen? Voeg <code>--alleen-lezen</code> toe aan het commando.</div>
+      </div>
       <div class="panel"><h2>Meer</h2>
         <div class="form-row"><button class="btn" data-open-keys="1">Sleutels beheren</button><span class="hint">Templates beheer je in het tabblad Template van een project of chat.</span></div>
       </div>

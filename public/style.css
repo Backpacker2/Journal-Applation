@@ -495,3 +495,5 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .board > .col { min-width: 0; }
 .board > .col .kcard { min-width: 0; }
 .k-rel { max-width: 100%; }
+
+pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 6px 0; user-select: all; }
