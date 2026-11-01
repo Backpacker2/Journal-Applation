@@ -30,3 +30,23 @@ module.exports.more.push(async ({ call, project, check }) => {
   const leeg = await call('documentopdracht', { ruimte: project, van: '2030-01-01' });
   check('documentopdracht zonder notities geeft uitleg', /geen notities/.test(leeg.t));
 });
+module.exports.more.push(async ({ call, project, check, write, rpc, modern }) => {
+  const list = await rpc('tools/list', modern({}));
+  const names = list.result.tools.map(t => t.name);
+  check('geen hulpmiddel om te verwijderen', !names.some(n => /verwijder|delete|wis/i.test(n)));
+  check('schrijfhulpmiddelen gemarkeerd', list.result.tools.filter(t => !t.annotations.readOnlyHint).every(t => ['document_opslaan', 'vragen_toevoegen'].includes(t.name)));
+  if (/^(1|ja|true|yes)$/i.test(process.env.LJ_MCP_ALLEEN_LEZEN || '')) {
+    const r = await call('document_opslaan', { ruimte: project, titel: 'x', inhoud: 'x' });
+    return check('alleen-lezen: opslaan geweigerd', r.err && !names.includes('document_opslaan'));
+  }
+  if (!write) return console.log('  (opslaan niet getest: start met --schrijven)');
+  const s = await call('document_opslaan', { ruimte: project, titel: 'MCP-test', inhoud: '# MCP-test\n\nAlleen een test.' });
+  check('document_opslaan', !s.err && /Opgeslagen/.test(s.t), s.t.split('.')[0]);
+  const id = (s.t.match(/id (\S+?)\)/) || [])[1];
+  const v2 = await call('document_opslaan', { ruimte: project, titel: 'MCP-test', inhoud: '# MCP-test v2', gebaseerd_op: id });
+  check('nieuwe versie maakt nieuw document', !v2.err && !v2.t.includes(id), v2.t.split('.')[0]);
+  const lijst = await call('documenten_lijst', { ruimte: project });
+  check('eerste versie bestaat nog', lijst.t.includes(id) && /MCP-test.*versie 2\/2/.test(lijst.t));
+  const q = await call('vragen_toevoegen', { ruimte: project, vragen: ['Wat zou je de volgende keer anders doen?'] });
+  check('vragen_toevoegen', !q.err, q.t);
+});

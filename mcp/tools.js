@@ -279,6 +279,53 @@ ruimte "${t.sp.name}", titel "${t.title}", soort "ruw"${t.p.from ? `, van "${t.p
 Laat het document daarna aan de gebruiker zien; hij maakt er zelf een eindversie van.`);
 });
 
+// ---------- opslaan (alleen nieuwe dingen; niets verwijderen of overschrijven) ----------
+tool({
+  name: 'document_opslaan', title: 'Document opslaan in Leerjournaal', write: true,
+  description: 'Slaat een document op in Leerjournaal, standaard als ruwe versie. Er wordt altijd een NIEUW document of een nieuwe versie gemaakt; bestaande documenten worden nooit overschreven. Gebruik gebaseerd_op (id) om een nieuwe versie van een bestaand document te maken. Sla alleen tekst op die uit de eigen woorden van de gebruiker bestaat.',
+  inputSchema: schema({
+    ruimte: RUIMTE,
+    titel: { type: 'string', description: 'Titel van het document.' },
+    inhoud: { type: 'string', description: 'Het document in Markdown.' },
+    soort: { type: 'string', enum: ['ruw', 'eind'], description: 'ruw (standaard) of eind. Kies eind alleen als de gebruiker dat uitdrukkelijk vraagt.' },
+    van: PERIODE.van, tot: PERIODE.tot,
+    kaart: { type: 'string', description: 'Koppel het document aan deze kaart (sleutel, nummer of titel).' },
+    gebaseerd_op: { type: 'string', description: 'Id van het document waarvan dit een nieuwe versie is (optioneel).' }
+  }, ['ruimte', 'titel', 'inhoud'])
+}, async args => {
+  const sp = await space(args.ruimte);
+  const inhoud = String(args.inhoud || '').trim();
+  if (!inhoud) throw new Error('Het document is leeg.');
+  if (inhoud.length > 500000) throw new Error('Dit document is te groot (meer dan 500.000 tekens).');
+  for (const d of [args.van, args.tot]) if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error(`Datum “${d}” moet de vorm JJJJ-MM-DD hebben.`);
+  const body = { kind: args.soort === 'eind' ? 'eind' : 'ruw', title: String(args.titel).trim().slice(0, 200), content: inhoud, from: args.van || null, to: args.tot || null, generatedBy: 'Claude (via MCP)' };
+  if (args.gebaseerd_op) {
+    const docs = await api('GET', `${sp.base}/documents`);
+    if (!docs.some(d => d.id === args.gebaseerd_op)) throw new Error(`Document ${args.gebaseerd_op} bestaat niet in ${sp.name}. Zie documenten_lijst.`);
+    body.basedOn = args.gebaseerd_op;
+  }
+  if (args.kaart) body.links = [cardOf(await boardOf(sp), args.kaart).id];
+  const d = await api('POST', `${sp.base}/documents`, body);
+  return `Opgeslagen in ${sp.name} → Documenten: “${d.title}” (${d.kind === 'eind' ? 'eindversie' : 'ruwe versie'}, id ${d.id}). De gebruiker kan het in Leerjournaal nalezen en er een eindversie van maken.`;
+});
+
+tool({
+  name: 'vragen_toevoegen', title: 'Vragen toevoegen', write: true,
+  description: 'Zet 1 tot 5 open vragen in een project of chat, als "vraag van AI". De gebruiker beantwoordt ze zelf in Leerjournaal. Stel alleen vragen; geef geen antwoorden, meningen of adviezen. Gedachten namens de gebruiker schrijven kan niet.',
+  inputSchema: schema({
+    ruimte: RUIMTE,
+    vragen: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 5, description: 'De vragen (open vragen, kort).' },
+    chat: { type: 'string', description: 'Chat binnen het project waarin de vragen komen (standaard Algemeen).' }
+  }, ['ruimte', 'vragen'])
+}, async args => {
+  const sp = await space(args.ruimte);
+  const vragen = (args.vragen || []).map(v => String(v).trim().slice(0, 500)).filter(Boolean).slice(0, 5);
+  if (!vragen.length) throw new Error('Geef minstens één vraag.');
+  const thread = args.chat && sp.type === 'projecten' ? threadOf(sp, args.chat).id : '';
+  for (const q of vragen) await api('POST', `${sp.base}/entries`, { kind: 'vraag', question: q, source: 'ai', ...(thread ? { thread } : {}) });
+  return `${vragen.length} ${vragen.length === 1 ? 'vraag' : 'vragen'} toegevoegd aan ${sp.name}. De gebruiker beantwoordt ze in Leerjournaal.`;
+});
+
 // ---------- kant-en-klare opdrachten ----------
 const prompts = [];
 
