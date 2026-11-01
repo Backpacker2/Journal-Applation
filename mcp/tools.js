@@ -182,12 +182,14 @@ tool({
 
 tool({
   name: 'document_lezen', title: 'Document lezen',
-  description: 'Leest één document (id uit documenten_lijst). Formaat: markdown (standaard) of tekst.',
-  inputSchema: schema({ ruimte: RUIMTE, id: { type: 'string', description: 'Id van het document.' }, formaat: { type: 'string', enum: ['markdown', 'tekst'], description: 'markdown (standaard) of tekst.' } }, ['ruimte', 'id'])
+  description: 'Leest één document (id uit documenten_lijst). Formaat: markdown (standaard), tekst, of html (zoals Portflow het verwacht bij portflow_add_evidence van canvas-mcp).',
+  inputSchema: schema({ ruimte: RUIMTE, id: { type: 'string', description: 'Id van het document.' }, formaat: { type: 'string', enum: ['markdown', 'tekst', 'html'], description: 'markdown (standaard), tekst of html.' } }, ['ruimte', 'id'])
 }, async ({ ruimte, id, formaat }) => {
   const sp = await space(ruimte);
   const d = await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}`);
-  const body = formaat === 'tekst' ? await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}/export/txt`, undefined, { raw: true }) : d.content;
+  const fmt = { tekst: 'txt', html: 'html' }[formaat];
+  const body = fmt ? await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}/export/${fmt}`, undefined, { raw: true }) : d.content;
+  if (formaat === 'html') return clip(body || '');
   return clip(`# ${d.title}\n(${d.kind}, ${(d.createdAt || '').slice(0, 16).replace('T', ' ')}${d.note ? ` — ${d.note}` : ''})\n\n${body || '(geen tekst)'}`);
 });
 
@@ -377,8 +379,26 @@ prompt({
 Stel daarna precies drie korte, open vragen die mij helpen mijn eigen redenering, keuzes, twijfels, fouten en wat ik geleerd heb onder woorden te brengen. Geef zelf geen antwoorden, meningen of adviezen, en herhaal geen vragen die er al staan.
 ${readOnly ? 'Zet de vragen hier neer.' : `Zet ze met vragen_toevoegen in ${q(a.ruimte)}${a.chat ? ` (chat ${q(a.chat)})` : ''} en laat ze hier ook zien.`}`);
 
+prompt({
+  name: 'portflow_inleveren', title: 'Document in Portflow zetten',
+  description: 'Zet een document uit Leerjournaal als bewijs in Portflow, via canvas-mcp. Claude vraagt eerst om bevestiging.',
+  arguments: [
+    { name: 'ruimte', description: 'Naam van het project', required: true },
+    { name: 'document', description: 'Titel of id van het document (leeg = de nieuwste eindversie)' },
+    { name: 'cursus', description: 'Optioneel: naam van de Canvas-cursus' }
+  ]
+}, a => `Ik wil een document uit Leerjournaal ${q(a.ruimte)} als bewijs in Portflow zetten.
+1. Zoek het document met documenten_lijst: ${a.document ? q(a.document) : 'de nieuwste eindversie'}. Is er alleen een ruwe versie, vraag dan eerst of ik die echt wil gebruiken.
+2. Haal het op met document_lezen, formaat "html".
+3. Zoek met canvas-mcp de cursus${a.cursus ? ` ${q(a.cursus)}` : ''} (canvas_list_courses) en de goals (portflow_list_goals). Stel voor bij welke goals het past, met een korte motivatie in mijn eigen woorden uit het document.
+4. Laat mij vóór het inleveren zien: cursus, titel, sectie/collectie, goals en motivatie. Wacht op mijn uitdrukkelijke "ja".
+5. Pas na mijn ja: portflow_add_evidence met de HTML. Lever géén snapshot in (portflow_submit_snapshot), tenzij ik daar apart om vraag en het opnieuw bevestig.
+Heb je geen canvas-mcp, zeg dat dan en geef me de HTML om zelf te plakken.`);
+
 // ---------- uitleg voor Claude ----------
 const INSTRUCTIONS = readOnly => `Leerjournaal is het persoonlijke leerjournaal van de gebruiker: gedachten per project (school/werk) of chat (persoonlijk), versleuteld opgeslagen.
-Belangrijkste regel: documenten bestaan uitsluitend uit de eigen woorden van de gebruiker. Voeg geen feiten, meningen, conclusies of lessen toe die niet in de notities staan.${readOnly ? '\nDeze verbinding staat in alleen-lezen-stand: je kunt niets opslaan.' : ''}`;
+Belangrijkste regel: documenten bestaan uitsluitend uit de eigen woorden van de gebruiker. Voeg geen feiten, meningen, conclusies of lessen toe die niet in de notities staan.
+Werkwijze voor een document: documentopdracht → schrijven volgens die opdracht → document_opslaan (ruwe versie) → resultaat laten zien.
+Portflow: een document kan als HTML (document_lezen, formaat html) via canvas-mcp als bewijs worden toegevoegd. Doe dat alleen na uitdrukkelijke bevestiging van de gebruiker, en lever nooit uit jezelf een snapshot in.${readOnly ? '\nDeze verbinding staat in alleen-lezen-stand: je kunt niets opslaan.' : ''}`;
 
 module.exports = { tools, prompts, INSTRUCTIONS, api, clip, BASE, space, period, threadOf, boardOf, cardOf, cardName };

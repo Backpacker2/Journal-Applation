@@ -59,3 +59,10 @@ module.exports.more.push(async ({ rpc, modern, check, project }) => {
   const mis = await rpc('prompts/get', modern({ name: 'kaart_document', arguments: { ruimte: project } }));
   check('verplicht argument ontbreekt → fout', !!mis.error);
 });
+module.exports.more.push(async ({ call, rpc, modern, check, project }) => {
+  const d = await call('documenten_lijst', { ruimte: project });
+  const id = (d.t.match(/id (\S+)/) || [])[1];
+  if (id) { const h = await call('document_lezen', { ruimte: project, id, formaat: 'html' }); check('document_lezen als html', !h.err && /<(h\d|p)>/.test(h.t), h.t.slice(0, 40)); }
+  const g = await rpc('prompts/get', modern({ name: 'portflow_inleveren', arguments: { ruimte: project } }));
+  check('opdracht portflow_inleveren vraagt bevestiging', /uitdrukkelijke "ja"/.test(g.result?.messages?.[0]?.content?.text || ''));
+});

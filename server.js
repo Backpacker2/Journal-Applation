@@ -14,6 +14,7 @@ const { GitHubAuth } = require('./lib/github');
 const { makeAdapter } = require('./lib/connectors');
 const boardSync = require('./lib/sync');
 const { extractText } = require('./lib/extract');
+const { markdownToHtml } = require('./lib/mdhtml');
 const providers = require('./lib/providers');
 
 const cfg = loadConfig();
@@ -236,6 +237,7 @@ route('GET', '/api/spaces/:type/:slug/documents/:id/export/:format', async ({ ty
   const name = fileName(doc);
   if (format === 'md') return file(`${name}.md`, 'text/markdown; charset=utf-8', doc.content);
   if (format === 'txt') return file(`${name}.txt`, 'text/plain; charset=utf-8', markdownToText(doc.content));
+  if (format === 'html') return file(`${name}.html`, 'text/html; charset=utf-8', markdownToHtml(doc.content));
   if (format === 'docx') return file(`${name}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', markdownToDocx(doc.content, doc.title));
   throw Object.assign(new Error('Onbekend formaat'), { status: 400 });
 });
