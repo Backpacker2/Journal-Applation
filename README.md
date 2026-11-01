@@ -31,6 +31,7 @@ van, volgens een template dat je per project of chat zelf instelt.
 - **Template per project of chat**: bepaalt de kopjes, taal en toon van het document
 - **Documenten**: een ruwe versie laten maken over een gekozen periode, bewerken, opslaan als eindversie; bekijken als preview, md of txt en downloaden als `.md`, `.txt` of Word (`.docx`)
 - **Werkt ook zonder API-sleutel**: "Kopieer prompt", plakken in Claude, en het resultaat terugzetten met "Plak resultaat"
+- **Claude zonder API-sleutel (MCP)**: Claude leest je gedachten en zet het document zelf terug, via je abonnement ([hoofdstuk 14](#14-claude-zonder-api-sleutel-mcp))
 - **Versleuteling** van alle inhoud én van de namen van je projecten en chats (AES-256-GCM)
 - **Meerdere sleutels**: oude sleutels toevoegen, zodat je data van vorige versies leesbaar blijft
 - **Automatisch naar GitHub**: elke wijziging wordt binnen een paar seconden geüpload; lukt dat niet, dan probeert de app het later opnieuw
@@ -435,3 +436,71 @@ Maak in de app **Opdrachten** een nieuwe opdracht:
 3. **Toon melding**: *Opgeslagen*.
 
 Noem de opdracht **Gedachte**; dan werkt *“Hé Siri, gedachte”*.
+
+## 14. Claude zonder API-sleutel (MCP)
+
+Met de MCP-koppeling werkt Leerjournaal samen met **Claude zelf** (de desktop-app of Claude Code). Claude leest je
+gedachten, schrijft het document volgens precies dezelfde regels als *Kopieer prompt* en zet het als ruwe versie terug
+in Leerjournaal. Dat gaat via je eigen Claude-abonnement: een API-sleutel is niet nodig.
+
+```
+Claude-app (je Mac) ──MCP──> mcp/server.js (je Mac) ──https──> Leerjournaal-server (Mac Mini, via Tailscale)
+```
+
+De brug (`mcp/server.js`) bewaart en ontsleutelt niets; je gedachten worden alleen op de Leerjournaal-server ontsleuteld.
+
+### Installeren
+
+Op de computer waar de Claude-app staat (je laptop), in je leerjournaal-map:
+
+```bash
+git pull
+bash tools/mcp-installeren.sh https://jouw-mini.tailXXXX.ts.net     # of dubbelklik Claude-koppelen.command
+```
+
+- Draait Leerjournaal op die computer zelf, laat het adres dan weg.
+- Je andere koppelingen (zoals `canvas-mcp`) blijven staan; er wordt eerst een reservekopie gemaakt van
+  `~/Library/Application Support/Claude/claude_desktop_config.json`.
+- Sluit de Claude-app daarna helemaal af (Cmd+Q) en open hem opnieuw.
+- **Alleen lezen:** voeg `--alleen-lezen` toe; dan kan Claude niets opslaan.
+- **Claude Code:** het script toont het commando (`claude mcp add leerjournaal …`).
+
+### Gebruiken
+
+Vraag het gewoon in Claude, bijvoorbeeld:
+- *"Maak met Leerjournaal het document voor Sprint 2 van Leerjournaal app."*
+- *"Maak een document over PROJ-22 in mijn groepsproject."*
+- *"Stel me drie vragen over wat ik deze week in 'Stage' schreef."*
+- *"Zet de eindversie van Sprint 2 in Portflow."* (met `canvas-mcp`; Claude vraagt eerst om bevestiging)
+
+Of klik in een chat op **+ → Leerjournaal** voor de kant-en-klare opdrachten: *Document maken*, *Document over een kaart*,
+*Vragen over mijn gedachten* en *Document in Portflow zetten*.
+
+| Hulpmiddel | Wat het doet |
+|---|---|
+| `ruimtes_lijst` | Projecten en chats, met sprints en chats binnen een project |
+| `gedachten_lezen` | Gedachten en vragen, te filteren op periode, sprint, chat of kaart |
+| `documenten_lijst`, `document_lezen` | Documenten lezen (markdown, tekst of html) |
+| `feedback_lezen`, `kaarten_lijst`, `zoeken` | Feedback, Kanbankaarten, zoeken in alles |
+| `documentopdracht` | Dezelfde opdracht als *Kopieer prompt* (regels, template, notities) |
+| `document_opslaan` | Document opslaan, altijd als nieuw document of nieuwe versie |
+| `vragen_toevoegen` | 1-5 vragen als *vraag van AI*; jij beantwoordt ze |
+| `leerjournaal_status` | Verbinding controleren |
+
+Claude kan **niets verwijderen of overschrijven** en **geen gedachten namens jou schrijven**.
+
+### Privacy en grenzen
+
+- Wat Claude leest (de gedachten van het project of de chat waar je om vraagt) gaat naar Claude, net als bij een gewone
+  chat. Je sleutels gaan nooit mee.
+- Dit is bedoeld voor **je eigen gebruik met je eigen abonnement**. Laat anderen niet via jouw Claude-account werken;
+  wie de app ook wil gebruiken, logt in met een eigen account.
+- Het telt mee voor de gebruikslimieten van je Claude-abonnement.
+
+### Testen
+
+```bash
+LJ_URL=https://jouw-mini.tailXXXX.ts.net npm run mcp-test               # alleen lezen
+LJ_URL=https://jouw-mini.tailXXXX.ts.net npm run mcp-test -- --schrijven  # maakt ook een testdocument en -vraag
+```
+
