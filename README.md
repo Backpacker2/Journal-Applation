@@ -265,7 +265,7 @@ Je gedachten gaan naar een **tweede, aparte** repository. Zo staan app-code en d
 | `Backpacker2/Journal-Applation` | de app-code | jij en Claude; updates via de knop |
 | `jouw-naam/Journal-Data` (privé) | je versleutelde gedachten en documenten | alleen de app, via *Sync met GitHub* |
 
-1. Maak op GitHub een **privé** repository aan (zonder README). Bij jou is dat `jouw-naam/Journal-Data`.
+1. Maak op GitHub een **privé** repository aan (zonder README). Bijvoorbeeld `jouw-naam/Journal-Data`.
 2. Koppel hem in de terminal:
    ```bash
    cd ~/Leerjournaal/data
@@ -301,7 +301,7 @@ nieuw is. Klik op **Nu bijwerken**: de app haalt de nieuwe code op, start zichze
   start.command                 app starten
   sleutels-zoeken.command       oude sleutels zoeken
   config.json                   jouw instellingen (niet in git)
-  data/                         je gedachten (aparte repository jouw-naam/Journal-Data)
+  data/                         je gedachten (aparte, privé repository, bijv. Journal-Data)
     projecten/5fe7b71a965b/              willekeurige code, geen naam
       ruimte.txt                         echte naam + template (versleuteld)
       gedachten/2026-10-30_13-02-15.txt  één gedachte of vraag (versleuteld)
@@ -470,7 +470,7 @@ bash tools/mcp-installeren.sh https://jouw-mini.tailXXXX.ts.net     # of dubbelk
 Vraag het gewoon in Claude, bijvoorbeeld:
 - *"Maak met Leerjournaal het document voor Sprint 2 van Leerjournaal app."*
 - *"Maak een document over PROJ-22 in mijn groepsproject."*
-- *"Stel me drie vragen over wat ik deze week in 'Stage' schreef."*
+- *"Stel me drie vragen over wat ik deze week in mijn chat 'Stage' schreef."*
 - *"Zet de eindversie van Sprint 2 in Portflow."* (met `canvas-mcp`; Claude vraagt eerst om bevestiging)
 
 Of klik in een chat op **+ → Leerjournaal** voor de kant-en-klare opdrachten: *Document maken*, *Document over een kaart*,
