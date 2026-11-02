@@ -497,3 +497,17 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .k-rel { max-width: 100%; }
 
 pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 6px 0; user-select: all; }
+
+/* ---------- sidebar: projects as folders with their chats ---------- */
+.folder-row { display: flex; align-items: center; gap: 0; }
+.folder-row .space-item { flex: 1; min-width: 0; }
+.folder-toggle { background: none; border: 0; color: #6e7488; width: 18px; padding: 0; font-size: 11px; cursor: pointer; flex-shrink: 0; }
+.folder-toggle:hover { color: #c3c8d6; }
+.folder-children { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--side-line, rgba(255,255,255,.08)); }
+.tree-item { display: flex; align-items: center; gap: 7px; background: none; border: 0; color: #a7adbd; font: inherit; font-size: 13px; text-align: left; padding: 5px 8px; border-radius: 7px; cursor: pointer; min-width: 0; }
+.tree-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-item:hover { background: var(--side-hover); color: #e4e7ef; }
+.tree-item.active { background: var(--side-hover); color: #fff; font-weight: 600; }
+.tree-ico { color: #6e7488; font-size: 12px; width: 10px; text-align: center; flex-shrink: 0; }
+.tree-item.add { color: #6e7488; font-size: 12px; }
+.archive-sub { font-size: 10.5px; color: #5c6275; text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px 2px; }

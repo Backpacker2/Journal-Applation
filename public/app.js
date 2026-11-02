@@ -121,19 +121,48 @@ const spaceButton = (s, extra = '') => {
 };
 const byRecent = (a, b) => (b.lastEntry || b.createdAt || '').localeCompare(a.lastEntry || a.createdAt || '');
 
+// Which projects are unfolded in the sidebar (per browser).
+const openFolders = () => { try { return new Set(JSON.parse(localStorage.getItem('lj-open-projects') || '[]')); } catch { return new Set(); } };
+function setFolder(slug, open) {
+  const set = openFolders(); open ? set.add(slug) : set.delete(slug);
+  try { localStorage.setItem('lj-open-projects', JSON.stringify([...set])); } catch {}
+}
+// A project as a folder: the project itself, and when unfolded its chats (threads) underneath.
+function projectFolder(s) {
+  if (s.locked) return spaceButton(s);
+  const isCurrent = state.current && state.current.type === s.type && state.current.slug === s.slug;
+  const open = openFolders().has(s.slug);
+  const threads = isCurrent ? (state.current.meta.threads || []) : (s.threads || []);
+  const onThread = id => isCurrent && state.mainMode == null && state.view === 'thoughts' && (state.thread || '') === id;
+  return `<div class="folder${open ? ' open' : ''}">
+      <div class="folder-row">
+        <button class="folder-toggle" data-folder="${esc(s.slug)}" aria-label="${open ? 'Dichtklappen' : 'Openklappen'}">${open ? '▾' : '▸'}</button>
+        ${spaceButton(s)}
+      </div>
+      ${open ? `<div class="folder-children">
+        ${[{ id: '', name: 'Algemeen' }, ...threads].map(t => `<button class="tree-item${onThread(t.id) ? ' active' : ''}" data-type="${s.type}" data-slug="${esc(s.slug)}" data-thread="${esc(t.id)}"><span class="tree-ico">#</span><span class="name">${esc(t.name)}</span></button>`).join('')}
+        <button class="tree-item add" data-new-thread="${esc(s.slug)}"><span class="tree-ico">+</span><span class="name">Nieuwe chat</span></button>
+      </div>` : ''}
+    </div>`;
+}
+
 function renderSidebar() {
   const ad = $('#all-docs-btn'); if (ad) ad.classList.toggle('active', state.mainMode === 'docs');
   const sb = $('#settings-btn'); if (sb) sb.classList.toggle('on', state.mainMode === 'settings');
-  const archived = state.spaces.filter(s => s.archived).sort(byRecent);
+  // Projects are the main structure; standalone chats live under Archive (they are never deleted).
+  const projects = state.spaces.filter(s => s.type === 'projecten' && !s.archived).sort(byRecent);
+  $('#list-projecten').innerHTML = projects.length ? projects.map(projectFolder).join('') : '<div class="space-empty">Nog geen projecten</div>';
+  const archivedProjects = state.spaces.filter(s => s.type === 'projecten' && s.archived).sort(byRecent);
+  const chats = state.spaces.filter(s => s.type === 'chats').sort(byRecent);
+  const total = archivedProjects.length + chats.length;
   const box = $('#archive');
   if (box) {
-    box.hidden = !archived.length;
-    box.innerHTML = `<button class="archive-toggle" data-action-side="toggle-archive">${state.showArchive ? '▾' : '▸'} Archief <span class="count">${archived.length}</span></button>
-      ${state.showArchive ? `<nav class="space-list">${archived.map(s => spaceButton(s, ' archived')).join('')}</nav>` : ''}`;
-  }
-  for (const type of ['projecten', 'chats']) {
-    const items = state.spaces.filter(s => s.type === type && !s.archived).sort(byRecent);
-    $('#list-' + type).innerHTML = items.length ? items.map(s => spaceButton(s)).join('') : `<div class="space-empty">${type === 'projecten' ? 'Nog geen projecten' : 'Nog geen chats'}</div>`;
+    box.hidden = !total;
+    box.innerHTML = `<button class="archive-toggle" data-action-side="toggle-archive">${state.showArchive ? '▾' : '▸'} Archief <span class="count">${total}</span></button>
+      ${state.showArchive ? `<nav class="space-list">
+        ${archivedProjects.map(s => spaceButton(s, ' archived')).join('')}
+        ${chats.length ? `<div class="archive-sub">Losse chats</div>${chats.map(s => spaceButton(s, ' archived')).join('')}` : ''}
+      </nav>` : ''}`;
   }
 }
 document.addEventListener('click', async e => {
@@ -142,6 +171,15 @@ document.addEventListener('click', async e => {
     state.showArchive = !state.showArchive;
     try { localStorage.setItem('lj-archive', state.showArchive ? '1' : '0'); } catch {}
     return renderSidebar();
+  }
+  const fold = e.target.closest('[data-folder]');
+  if (fold) { setFolder(fold.dataset.folder, !openFolders().has(fold.dataset.folder)); return renderSidebar(); }
+  const tree = e.target.closest('.tree-item[data-thread]');
+  if (tree) return openSpace(tree.dataset.type, tree.dataset.slug, 'thoughts', tree.dataset.thread);
+  const addThread = e.target.closest('[data-new-thread]');
+  if (addThread) {
+    if (state.current?.slug !== addThread.dataset.newThread) await openSpace('projecten', addThread.dataset.newThread);
+    return newThread().catch(fail);
   }
   const item = e.target.closest('.space-item');
   if (item) return openSpace(item.dataset.type, item.dataset.slug);
@@ -159,7 +197,9 @@ document.addEventListener('click', async e => {
 });
 
 // ---------- opening a space ----------
-async function openSpace(type, slug, view = 'thoughts') {
+async function openSpace(type, slug, view = 'thoughts', thread = null) {
+  // Opening another project unfolds its folder in the sidebar; folding stays up to the user afterwards.
+  if (type === 'projecten' && !(state.current?.type === type && state.current?.slug === slug)) setFolder(slug, true);
   state.mainMode = null;
   try {
     state.current = await api('GET', `/api/spaces/${type}/${slug}`);
@@ -167,7 +207,8 @@ async function openSpace(type, slug, view = 'thoughts') {
     state.openDoc = null; state.docEdit = false; state.selecting = false; state.selected.clear();
     try { localStorage.setItem('lj-last', `${type}/${slug}`); } catch {}
     state.thread = '';
-    try { const t = localStorage.getItem(`lj-thread-${type}-${slug}`) || ''; if (threadsOf().some(x => x.id === t)) state.thread = t; } catch {}
+    try { const t = thread ?? localStorage.getItem(`lj-thread-${type}-${slug}`) ?? ''; if (threadsOf().some(x => x.id === t)) state.thread = t; } catch {}
+    if (thread !== null) { try { localStorage.setItem(`lj-thread-${type}-${slug}`, state.thread); } catch {} }
     state.board = null; state.docCard = null;
     if (type === 'projecten') loadCards();
     renderSidebar(); render();
@@ -179,10 +220,11 @@ function closeDrawer() { $('#sidebar').classList.remove('open'); $('#scrim').cla
 $('#menu-btn').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#scrim').classList.add('open'); });
 $('#scrim').addEventListener('click', closeDrawer);
 // On a phone: the menu closes after a choice.
-$('#sidebar').addEventListener('click', e => { if (e.target.closest('.space-item, .nav-item, #settings-btn, #keys-btn, [data-open-keys]')) closeDrawer(); });
+$('#sidebar').addEventListener('click', e => { if (e.target.closest('.space-item, .tree-item, .nav-item, #settings-btn, #keys-btn, [data-open-keys]')) closeDrawer(); });
 
 function render() {
   const c = state.current; if (!c) return;
+  renderSidebar();
   setTopbar(c.meta.name);
   const isProject = c.type === 'projecten';
   $('#main').innerHTML = `
@@ -423,7 +465,7 @@ function visibleEntries() {
 function setThread(id) {
   state.thread = id || ''; state.replyTo = null; state.selected.clear();
   try { localStorage.setItem(`lj-thread-${state.current.type}-${state.current.slug}`, state.thread); } catch {}
-  renderThread();
+  renderThread(); renderSidebar();
 }
 function threadBar() {
   const c = state.current; if (c.type !== 'projecten') return '';
@@ -440,6 +482,9 @@ function threadBar() {
 }
 async function saveThreads(list) {
   state.current.meta = await api('PUT', base(), { threads: list });
+  const s = state.spaces.find(x => x.type === state.current.type && x.slug === state.current.slug);
+  if (s) s.threads = (state.current.meta.threads || []).map(t => ({ id: t.id, name: t.name }));
+  renderSidebar();
 }
 async function newThread() {
   const name = prompt('Naam van de nieuwe chat in dit project (bijvoorbeeld een onderwerp of user story):');

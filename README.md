@@ -100,8 +100,10 @@ nooit in de app-repository terecht.
 
 ## 4. Dagelijks gebruik
 
-**Projecten en chats.** Klik op `+` naast *Projecten* of *Chats*. Projecten zijn voor school en werk en krijgen
-later extra tabbladen (Kanban, Feedback). Chats zijn voor alles waar je even over wilt nadenken.
+**Projecten.** Klik op `+` naast *Projecten* voor een nieuw project. In de zijbalk is elk project een mapje: met
+**▸** klap je het open en zie je de chats van dat project (*Algemeen* en je eigen chats); klik op een chat om erin te
+werken, of op **+ Nieuwe chat**. Losse chats (van vóór de chats binnen projecten) staan onder **Archief** → *Losse
+chats*; ze zijn niet verwijderd en werken gewoon.
 
 **Chats binnen een project.** Boven de gedachten van een project staan de chats: *Algemeen* en de chats die je zelf
 maakt met **+ Nieuwe chat** (bijvoorbeeld per onderwerp of user story). Wat je typt, komt in de gekozen chat. Met

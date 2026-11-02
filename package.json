@@ -1,6 +1,6 @@
 {
   "name": "leerjournaal",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A personal learning journal: capture thoughts per project or chat, store them encrypted in GitHub and turn them into documents.",
   "private": true,
   "main": "launcher.js",
