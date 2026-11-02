@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Maakt "Leerjournaal.app" in je map Apps (Programma's) op je Mac.
-# Klik je erop, dan start de app vanzelf de server (als die nog niet draait) en opent Leerjournaal in een eigen venster.
+# Creates "Leerjournaal.app" in ~/Applications on the Mac.
+# Clicking it starts the server (when it is not running yet) and opens Leerjournaal in its own window.
 #
-# Gebruik (in Terminal, vanuit de app-map):
-#   bash tools/maak-mac-app.sh                          # server op deze Mac
-#   bash tools/maak-mac-app.sh https://mini.tailXXXX.ts.net   # alleen openen: de server draait op je Mac Mini
+# Usage (in Terminal, from the app folder):
+#   bash tools/make-mac-app.sh                                 # server on this Mac
+#   bash tools/make-mac-app.sh https://mini.tailXXXX.ts.net    # only open it: the server runs on the Mac Mini
 #
-# Opnieuw draaien mag altijd: de app wordt dan bijgewerkt. Je gedachten en instellingen worden niet aangeraakt.
+# Running it again is always fine: the app is updated. Thoughts and settings are never touched.
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REMOTE_URL="${1:-}"
@@ -36,7 +36,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-# Het programma in de app: server starten als dat nodig is, en dan het venster openen.
+# The program inside the app: start the server when needed, then open the window.
 cat > "$APP/Contents/MacOS/leerjournaal" <<SCRIPT
 #!/bin/bash
 APP_DIR="$APP_DIR"
@@ -49,13 +49,13 @@ URL="\${REMOTE_URL:-http://localhost:\$PORT}"
 up() { curl -fsS -m 2 -H 'x-leerjournaal: 1' "http://127.0.0.1:\$PORT/api/status" >/dev/null 2>&1; }
 
 if [ -z "\$REMOTE_URL" ] && ! up; then
-  if [ ! -d "\$APP_DIR" ]; then osascript -e 'display alert "Leerjournaal" message "De app-map is verplaatst. Draai tools/maak-mac-app.sh opnieuw vanuit de nieuwe map."'; exit 1; fi
+  if [ ! -d "\$APP_DIR" ]; then osascript -e 'display alert "Leerjournaal" message "De app-map is verplaatst. Draai tools/make-mac-app.sh opnieuw vanuit de nieuwe map."'; exit 1; fi
   cd "\$APP_DIR" && nohup "\$NODE" launcher.js >> "\$LOG" 2>&1 &
   for i in \$(seq 1 40); do up && break; sleep 0.25; done
   if ! up; then osascript -e "display alert \"Leerjournaal start niet\" message \"Kijk in \$LOG wat er misging.\""; exit 1; fi
 fi
 
-# Eigen venster zonder tabbladen als Chrome, Edge of Brave er is; anders gewoon in je standaardbrowser.
+# Own window without tabs when Chrome, Edge or Brave is installed; otherwise the default browser.
 for b in "Google Chrome" "Microsoft Edge" "Brave Browser"; do
   if [ -d "/Applications/\$b.app" ] || [ -d "\$HOME/Applications/\$b.app" ]; then
     open -na "\$b" --args --app="\$URL" --user-data-dir="\$HOME/Library/Application Support/Leerjournaal/venster"; exit 0
@@ -65,7 +65,7 @@ open "\$URL"
 SCRIPT
 chmod +x "$APP/Contents/MacOS/leerjournaal"
 
-# Icoon van de app (uit public/icons).
+# App icon (from public/icons).
 ICON_SRC="$APP_DIR/public/icons/icon-512.png"
 if [ -f "$ICON_SRC" ] && command -v iconutil >/dev/null; then
   SET="$(mktemp -d)/Leerjournaal.iconset"; mkdir -p "$SET"
@@ -75,7 +75,7 @@ if [ -f "$ICON_SRC" ] && command -v iconutil >/dev/null; then
   done
   iconutil -c icns "$SET" -o "$APP/Contents/Resources/Leerjournaal.icns" && rm -rf "$(dirname "$SET")"
 fi
-touch "$APP"   # Finder ververst het icoon
+touch "$APP"   # makes Finder refresh the icon
 
 echo ""
 echo "  Klaar: $APP"

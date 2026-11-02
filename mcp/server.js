@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// Leerjournaal als MCP-server: zo kan Claude (de desktop-app of Claude Code) je gedachten lezen en
-// documenten terugzetten in Leerjournaal, via je eigen Claude-abonnement en zonder API-sleutel.
+// Leerjournaal as an MCP server: lets Claude (the desktop app or Claude Code) read the user's thoughts
+// and save documents back into Leerjournaal, using the user's own Claude subscription (no API key).
 //
-// Dit programma is een brug: Claude start het (stdio), en het praat met de Leerjournaal-server via
-// http, lokaal of op je Mac Mini via Tailscale. Je gedachten worden alleen op die server ontsleuteld;
-// sleutels staan hier niet.
+// This program is a bridge: Claude starts it (stdio) and it talks to the Leerjournaal server over
+// HTTP, locally or on the Mac Mini via Tailscale. Thoughts are only decrypted on that server; no keys
+// are stored here.
 //
-// Instellingen (omgevingsvariabelen):
-//   LJ_URL              adres van Leerjournaal (standaard http://localhost:4173)
-//   LJ_MCP_ALLEEN_LEZEN 1 = Claude mag alleen lezen, niets opslaan
+// Settings (environment variables):
+//   LJ_URL             address of Leerjournaal (default http://localhost:4173)
+//   LJ_MCP_READ_ONLY   1 = Claude may only read, never save (LJ_MCP_ALLEEN_LEZEN is accepted too)
 //
-// Ondersteunt zowel de oudere MCP-versies (met "initialize") als de nieuwe versie zonder sessie
-// (2026-07-28, met _meta per verzoek). Geen extra pakketten nodig.
+// Supports both older MCP revisions (with "initialize") and the stateless revision 2026-07-28
+// (server/discover, _meta on every request). No external packages needed.
 const readline = require('readline');
 const { tools, prompts, INSTRUCTIONS } = require('./tools');
 const { version } = require('../package.json');
@@ -20,7 +20,7 @@ const MODERN = ['2026-07-28'];
 const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const SERVER_INFO = { name: 'leerjournaal', title: 'Leerjournaal', version };
 const META = 'io.modelcontextprotocol/';
-const readOnly = /^(1|ja|true|yes)$/i.test(process.env.LJ_MCP_ALLEEN_LEZEN || '');
+const readOnly = /^(1|ja|true|yes)$/i.test(process.env.LJ_MCP_READ_ONLY || process.env.LJ_MCP_ALLEEN_LEZEN || '');
 
 const log = (...a) => process.stderr.write(`[leerjournaal-mcp] ${a.join(' ')}\n`);
 const send = msg => process.stdout.write(JSON.stringify(msg) + '\n');
@@ -40,13 +40,13 @@ function toolList() {
 async function callTool(params) {
   const t = tools.find(x => x.name === params?.name);
   if (!t) throw Object.assign(new Error(`Onbekend hulpmiddel: ${params?.name}`), { rpc: -32602 });
-  if (readOnly && t.write) return { content: [{ type: 'text', text: 'Leerjournaal staat in alleen-lezen-stand (LJ_MCP_ALLEEN_LEZEN). Opslaan is uitgeschakeld.' }], isError: true };
+  if (readOnly && t.write) return { content: [{ type: 'text', text: 'Leerjournaal staat in alleen-lezen-stand (LJ_MCP_READ_ONLY). Opslaan is uitgeschakeld.' }], isError: true };
   try {
     const out = await t.run(params.arguments || {});
     const text = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
     return { content: [{ type: 'text', text }], isError: false };
   } catch (e) {
-    // Fouten die Claude zelf kan oplossen (verkeerde naam, server uit) als gewone tekst teruggeven.
+    // Errors Claude can fix itself (wrong name, server down) are returned as normal tool output.
     return { content: [{ type: 'text', text: e.message || String(e) }], isError: true };
   }
 }
@@ -61,11 +61,11 @@ async function getPrompt(params) {
 async function handle(msg) {
   const { id, method, params } = msg;
   const isRequest = id !== undefined && id !== null;
-  if (!isRequest) return; // meldingen (notifications) vragen geen antwoord
+  if (!isRequest) return; // notifications get no response
   const meta = params?._meta || {};
   const requested = meta[META + 'protocolVersion'];
   try {
-    // Nieuwe protocolversie: versie en mogelijkheden staan bij elk verzoek.
+    // Modern protocol revision: version and capabilities come with every request.
     if (requested !== undefined && method !== 'initialize') {
       if (!MODERN.includes(requested)) return err(id, -32022, 'Unsupported protocol version', { supported: [...MODERN, ...LEGACY], requested });
       if (method !== 'server/discover' && meta[META + 'clientCapabilities'] === undefined) return err(id, -32602, 'Missing _meta io.modelcontextprotocol/clientCapabilities');
@@ -87,7 +87,7 @@ async function handle(msg) {
       default: return err(id, -32601, `Method not found: ${method}`);
     }
   } catch (e) {
-    log('fout bij', method, e.message);
+    log('error in', method, e.message);
     return err(id, e.rpc || -32603, e.message || 'Interne fout');
   }
 }
@@ -101,4 +101,4 @@ rl.on('line', line => {
   handle(msg);
 });
 rl.on('close', () => process.exit(0));
-log(`gestart (versie ${version}) · Leerjournaal op ${process.env.LJ_URL || 'http://localhost:4173'}${readOnly ? ' · alleen lezen' : ''}`);
+log(`started (version ${version}) · Leerjournaal at ${process.env.LJ_URL || 'http://localhost:4173'}${readOnly ? ' · read-only' : ''}`);

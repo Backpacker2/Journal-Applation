@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dubbelklik: maakt Leerjournaal.app in je map Apps, zodat je Leerjournaal als gewone app opent.
+# Double-click: creates Leerjournaal.app in ~/Applications so Leerjournaal opens like a normal app.
 cd "$(dirname "$0")" || exit 1
-bash tools/maak-mac-app.sh "$@"
+bash tools/make-mac-app.sh "$@"
 read -r -p "Druk op Enter om te sluiten..."

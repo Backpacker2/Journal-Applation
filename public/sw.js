@@ -1,6 +1,6 @@
-// Service worker: de app opent ook als de verbinding even weg is.
-// Altijd eerst het netwerk (zo krijg je na een update meteen de nieuwe versie); alleen bij geen verbinding de opgeslagen kopie.
-// API-aanroepen (je gedachten) worden nooit opgeslagen.
+// Service worker: the app also opens when the connection is briefly gone.
+// Network first (so an update shows up right away); the cached copy only when offline.
+// API calls (the thoughts) are never cached.
 const CACHE = 'leerjournaal-v1';
 const SHELL = ['/', '/index.html', '/app.js', '/style.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Zoekt op je computer naar oude Leerjournaal-sleutels (secret.key en andere .key-bestanden),
-// test welke op je data passen en voegt de bruikbare toe aan je sleutelmap.
+// Searches the computer for old Leerjournaal keys (secret.key and other .key files),
+// tests which ones fit the data and adds the useful ones to the key folder.
 //
-// Gebruik:
-//   npm run sleutels                  zoeken en daarna vragen of je ze wilt toevoegen
-//   npm run sleutels -- --ja          zonder vragen toevoegen
-//   npm run sleutels -- --map ~/Oud   ook in een extra map zoeken
-//   npm run sleutels -- --alles       ook sleutels toevoegen die (nog) op geen enkel bestand passen
+// Usage (Dutch flags are still accepted):
+//   npm run find-keys                     search, then ask whether to add them
+//   npm run find-keys -- --yes            add without asking            (--ja)
+//   npm run find-keys -- --dir ~/Old      also search an extra folder   (--map)
+//   npm run find-keys -- --all            also add keys that fit no file (yet) (--alles)
+// Messages to the user are Dutch.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -16,20 +17,21 @@ const { loadConfig } = require('../lib/config');
 const { parseKey, keyId, Keyring } = require('../lib/crypto');
 
 const args = process.argv.slice(2);
-const flag = f => args.includes(f);
+const ALIASES = { '--yes': '--ja', '--all': '--alles', '--dir': '--map' }; // English flags map to the original Dutch ones
+const flag = f => args.includes(f) || Object.entries(ALIASES).some(([en, nl]) => nl === f && args.includes(en));
 const extraRoots = [];
-for (let i = 0; i < args.length; i++) if (args[i] === '--map' && args[i + 1]) extraRoots.push(args[++i]);
+for (let i = 0; i < args.length; i++) if ((args[i] === '--map' || args[i] === '--dir') && args[i + 1]) extraRoots.push(args[++i]);
 
 const cfg = loadConfig();
 const HOME = os.homedir();
 const keyDir = path.dirname(cfg.keyFile);
-const MAX_KEY_BYTES = 200; // een sleutel is ~45 bytes; grotere .key-bestanden (zoals Keynote) slaan we over
+const MAX_KEY_BYTES = 200; // a key is ~45 bytes; larger .key files (such as Keynote) are skipped
 const SKIP_DIRS = new Set(['node_modules', '.git', '.Trash', 'Library', '.cache', '.npm', 'Applications', 'Pictures', 'Music', 'Movies']);
 
 const expand = p => (p.startsWith('~') ? path.join(HOME, p.slice(1)) : path.resolve(p));
 const short = p => (p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p);
 
-// ---------- 1. kandidaten verzamelen ----------
+// ---------- 1. collect candidates ----------
 function viaSpotlight() {
   if (process.platform !== 'darwin') return [];
   try {
@@ -50,7 +52,7 @@ function walk(root, depth, out) {
   }
 }
 
-// Zoekt andere Leerjournaal-datamappen (bijv. van een vorige versie), zodat je weet waar oude gedachten staan.
+// Finds other Leerjournaal data folders (e.g. from a previous version), to show where old thoughts are.
 function otherDataDirs(roots) {
   const found = new Map();
   const look = (dir, depth) => {
@@ -101,7 +103,7 @@ function candidates() {
   return [...keys.values()];
 }
 
-// ---------- 2. sleutels die nu al geladen zijn ----------
+// ---------- 2. keys that are already loaded ----------
 function loadedIds() {
   const ids = new Set();
   const files = fs.existsSync(keyDir) ? fs.readdirSync(keyDir).filter(f => /\.key$/i.test(f)).map(f => path.join(keyDir, f)) : [];
@@ -111,7 +113,7 @@ function loadedIds() {
   return ids;
 }
 
-// ---------- 3. data testen ----------
+// ---------- 3. test the data ----------
 function dataFiles() {
   const out = [];
   const go = dir => {
@@ -148,7 +150,7 @@ function ask(question) {
   const loaded = loadedIds();
   const found = candidates();
 
-  // Welke bestanden zijn nu onleesbaar met de geladen sleutels?
+  // Which files are unreadable with the loaded keys?
   const loadedKeys = found.filter(k => loaded.has(k.id));
   const readableNow = new Set();
   for (const k of loadedKeys) {

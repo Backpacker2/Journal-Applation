@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dubbelklik dit bestand op je Mac om Leerjournaal te starten.
+# Double-click this file on the Mac to start Leerjournaal.
 cd "$(dirname "$0")" || exit 1
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js is niet gevonden. Installeer het via https://nodejs.org of 'brew install node'."

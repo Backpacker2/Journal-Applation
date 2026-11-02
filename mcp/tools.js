@@ -1,11 +1,12 @@
-// De hulpmiddelen (tools) en kant-en-klare opdrachten (prompts) die Claude krijgt.
-// Alles gaat via de http-API van Leerjournaal; deze brug bewaart en ontsleutelt zelf niets.
+// The tools and ready-made prompts that Claude gets from the Leerjournaal MCP server.
+// Everything goes through the Leerjournaal HTTP API; this bridge stores and decrypts nothing itself.
+// Tool names, arguments and descriptions are English; text shown to the user stays Dutch.
 
 const BASE = String(process.env.LJ_URL || 'http://localhost:4173').replace(/\/+$/, '');
 const TIMEOUT = 30000;
-const MAX_TEXT = 120000; // zo blijft een antwoord binnen wat Claude prettig kan lezen
+const MAX_TEXT = 120000; // keeps a response within what Claude can comfortably read
 
-// ---------- verbinding met Leerjournaal ----------
+// ---------- connection to Leerjournaal ----------
 async function api(method, path, body, { raw = false } = {}) {
   let res;
   try {
@@ -29,14 +30,14 @@ async function api(method, path, body, { raw = false } = {}) {
 
 const clip = s => (s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + `\n\n[… ingekort: nog ${s.length - MAX_TEXT} tekens. Gebruik een kortere periode of een filter.]` : s);
 
-// ---------- hulpmiddelen ----------
+// ---------- tool registry ----------
 const tools = [];
 const tool = (def, run) => tools.push({ ...def, run });
 const schema = (props = {}, required = []) => ({ type: 'object', properties: props, required, additionalProperties: false });
 
 tool({
   name: 'leerjournaal_status', title: 'Status van Leerjournaal',
-  description: 'Controleert de verbinding met Leerjournaal en geeft de versie en het aantal projecten en chats. Gebruik dit als iets niet lukt.',
+  description: 'Checks the connection to Leerjournaal and reports the version and the number of projects and chats. Use this when something does not work.',
   inputSchema: schema()
 }, async () => {
   const [st, spaces] = await Promise.all([api('GET', '/api/status'), api('GET', '/api/spaces')]);
@@ -50,20 +51,20 @@ tool({
   ].join('\n');
 });
 
-// ---------- namen opzoeken ----------
-// Claude mag namen gebruiken ("Leerjournaal app", "Sprint 2", "PROJ-22", "Sensor onderzoek");
-// hier worden die omgezet naar de interne codes. Hoofdletters en accenten maken niet uit.
+// ---------- resolving names ----------
+// Claude may use plain names ("My project", "Sprint 2", "PROJ-22", "Research"); they are resolved
+// to internal ids here. Case and accents do not matter.
 const fold = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-const pickOne = (list, q, label, nameOf) => {
-  const f = fold(q);
+const pickOne = (list, query, label, nameOf) => {
+  const f = fold(query);
   const exact = list.filter(x => fold(nameOf(x)) === f);
-  const part = exact.length ? exact : list.filter(x => fold(nameOf(x)).includes(f));
-  if (part.length === 1) return part[0];
-  if (!part.length) throw new Error(`${label} “${q}” niet gevonden. Kies uit: ${list.map(nameOf).join(', ') || '(geen)'}`);
-  throw new Error(`“${q}” past op meerdere: ${part.map(nameOf).join(', ')}. Wees specifieker.`);
+  const partial = exact.length ? exact : list.filter(x => fold(nameOf(x)).includes(f));
+  if (partial.length === 1) return partial[0];
+  if (!partial.length) throw new Error(`${label} “${query}” niet gevonden. Kies uit: ${list.map(nameOf).join(', ') || '(geen)'}`);
+  throw new Error(`“${query}” past op meerdere: ${partial.map(nameOf).join(', ')}. Wees specifieker.`);
 };
 async function space(name) {
-  if (!name) throw new Error('Geef de naam van het project of de chat (zie ruimtes_lijst).');
+  if (!name) throw new Error('Geef de naam van het project of de chat (zie list_spaces).');
   const list = (await api('GET', '/api/spaces')).filter(s => !s.locked);
   const s = list.find(x => x.slug === name) || pickOne(list, name, 'Project of chat', x => x.name);
   const full = await api('GET', `/api/spaces/${s.type}/${s.slug}`);
@@ -71,7 +72,7 @@ async function space(name) {
 }
 const sprintOf = (sp, name) => pickOne(sp.meta.sprints || [], name, 'Sprint', x => x.name);
 function threadOf(sp, name) {
-  if (fold(name) === 'algemeen') return { id: '', name: 'Algemeen' };
+  if (['algemeen', 'general'].includes(fold(name))) return { id: '', name: 'Algemeen' };
   return pickOne(sp.meta.threads || [], name, 'Chat binnen het project', x => x.name);
 }
 async function boardOf(sp) {
@@ -79,37 +80,38 @@ async function boardOf(sp) {
   return api('GET', `${sp.base}/board`);
 }
 const cardName = c => `${c.remote?.key ? c.remote.key + ' ' : ''}${c.title}`;
-function cardOf(board, q) {
-  const f = fold(q).replace(/^@/, '');
+function cardOf(board, query) {
+  const f = fold(query).replace(/^@/, '');
   const byKey = board.cards.filter(c => fold(c.remote?.key) === f || (/^\d+$/.test(f) && fold(c.remote?.key).endsWith('-' + f)));
   if (byKey.length === 1) return byKey[0];
-  const byId = board.cards.find(c => c.id === q);
+  const byId = board.cards.find(c => c.id === query);
   if (byId) return byId;
-  return pickOne(board.cards, q.replace(/^@/, ''), 'Kaart', cardName);
+  return pickOne(board.cards, query.replace(/^@/, ''), 'Kaart', cardName);
 }
-// Periode: sprint (naam) of van/tot (JJJJ-MM-DD). Geeft { from, to, label }.
-function period(sp, { sprint, van, tot }) {
+const isDay = d => /^\d{4}-\d{2}-\d{2}$/.test(d);
+// Period: a sprint (by name) or from/to (YYYY-MM-DD). Returns { from, to, label }.
+function period(sp, { sprint, from, to }) {
   if (sprint) { const x = sprintOf(sp, sprint); return { from: x.from, to: x.to, label: `${x.name} (${x.from} t/m ${x.to})` }; }
-  for (const d of [van, tot]) if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error(`Datum “${d}” moet de vorm JJJJ-MM-DD hebben.`);
-  return { from: van || null, to: tot || null, label: van || tot ? `${van || 'begin'} t/m ${tot || 'nu'}` : 'alles' };
+  for (const d of [from, to]) if (d && !isDay(d)) throw new Error(`Datum “${d}” moet de vorm JJJJ-MM-DD hebben.`);
+  return { from: from || null, to: to || null, label: from || to ? `${from || 'begin'} t/m ${to || 'nu'}` : 'alles' };
 }
 const day = id => id.slice(0, 10);
 const hhmm = id => `${id.slice(11, 13)}:${id.slice(14, 16)}`;
 
-// ---------- lezen ----------
-const RUIMTE = { type: 'string', description: 'Naam van het project of de chat (zoals in ruimtes_lijst).' };
-const PERIODE = {
-  sprint: { type: 'string', description: 'Naam van een sprint (alleen projecten), bijvoorbeeld "Sprint 2". Gaat voor van/tot.' },
-  van: { type: 'string', description: 'Begindatum JJJJ-MM-DD (optioneel).' },
-  tot: { type: 'string', description: 'Einddatum JJJJ-MM-DD, tot en met (optioneel).' }
+// ---------- reading ----------
+const SPACE = { type: 'string', description: 'Name of the project or chat (as shown by list_spaces).' };
+const PERIOD = {
+  sprint: { type: 'string', description: 'Name of a sprint (projects only), e.g. "Sprint 2". Takes precedence over from/to.' },
+  from: { type: 'string', description: 'Start date YYYY-MM-DD (optional).' },
+  to: { type: 'string', description: 'End date YYYY-MM-DD, inclusive (optional).' }
 };
 
 tool({
-  name: 'ruimtes_lijst', title: 'Projecten en chats',
-  description: 'Toont alle projecten en chats in Leerjournaal, met aantal gedachten, laatste activiteit, sprints en de chats binnen een project. Begin hiermee.',
-  inputSchema: schema({ archief: { type: 'boolean', description: 'Ook gearchiveerde tonen (standaard nee).' } })
-}, async ({ archief }) => {
-  const list = (await api('GET', '/api/spaces')).filter(s => archief || !s.archived);
+  name: 'list_spaces', title: 'Projecten en chats',
+  description: 'Lists all projects and chats in Leerjournaal with the number of entries, last activity, sprints and the chats (threads) inside each project. Start here.',
+  inputSchema: schema({ archived: { type: 'boolean', description: 'Also include archived ones (default false).' } })
+}, async ({ archived }) => {
+  const list = (await api('GET', '/api/spaces')).filter(s => archived || !s.archived);
   const out = [];
   for (const type of ['projecten', 'chats']) {
     out.push(type === 'projecten' ? '# Projecten' : '\n# Chats');
@@ -129,25 +131,25 @@ tool({
 });
 
 tool({
-  name: 'gedachten_lezen', title: 'Gedachten lezen',
-  description: 'Leest de gedachten, eigen vragen, AI-vragen en antwoorden van een project of chat, in volgorde, met datum en tijd. Filter op periode of sprint, op een chat binnen het project, of op een kaart (ticket) van het Kanbanbord.',
+  name: 'read_thoughts', title: 'Gedachten lezen',
+  description: 'Reads the thoughts, own questions, AI questions and answers of a project or chat, in order, with date and time. Filter by period or sprint, by a chat (thread) inside the project, or by a card (ticket) on the Kanban board.',
   inputSchema: schema({
-    ruimte: RUIMTE, ...PERIODE,
-    chat: { type: 'string', description: 'Alleen deze chat binnen het project ("Algemeen" of de naam).' },
-    kaart: { type: 'string', description: 'Alleen wat aan deze kaart gekoppeld is: sleutel (PROJ-22), nummer (22) of titel.' }
-  }, ['ruimte'])
+    space: SPACE, ...PERIOD,
+    chat: { type: 'string', description: 'Only this chat inside the project ("Algemeen" or its name).' },
+    card: { type: 'string', description: 'Only what is linked to this card: key (PROJ-22), number (22) or title.' }
+  }, ['space'])
 }, async args => {
-  const sp = await space(args.ruimte);
+  const sp = await space(args.space);
   const p = period(sp, args);
   const known = new Set((sp.meta.threads || []).map(t => t.id));
-  const tname = Object.fromEntries((sp.meta.threads || []).map(t => [t.id, t.name]));
+  const threadName = Object.fromEntries((sp.meta.threads || []).map(t => [t.id, t.name]));
   let list = sp.entries.filter(e => (!p.from || day(e.id) >= p.from) && (!p.to || day(e.id) <= p.to));
   let filter = '';
   if (args.chat) { const t = threadOf(sp, args.chat); list = list.filter(e => (known.has(e.thread) ? e.thread : '') === t.id); filter += ` · chat: ${t.name}`; }
   let cards = {};
   if (sp.type === 'projecten') { try { cards = Object.fromEntries((await boardOf(sp)).cards.map(c => [c.id, c])); } catch {} }
-  if (args.kaart) {
-    const c = cardOf({ cards: Object.values(cards) }, args.kaart);
+  if (args.card) {
+    const c = cardOf({ cards: Object.values(cards) }, args.card);
     const ids = new Set(list.filter(e => (e.links || []).some(l => l.id === c.id)).map(e => e.id));
     list = list.filter(e => ids.has(e.id) || ids.has(e.replyTo)); filter += ` · kaart: ${cardName(c)}`;
   }
@@ -156,7 +158,7 @@ tool({
   for (const e of list) {
     if (day(e.id) !== last) { lines.push(`## ${day(e.id)}`); last = day(e.id); }
     const extra = [
-      known.size ? `chat: ${tname[e.thread] || 'Algemeen'}` : '',
+      known.size ? `chat: ${threadName[e.thread] || 'Algemeen'}` : '',
       e.replyTo ? `reactie op ${day(e.replyTo)} ${hhmm(e.replyTo)}` : '',
       (e.links || []).map(l => cards[l.id]).filter(Boolean).map(c => `kaart: ${cardName(c)}`).join(', ')
     ].filter(Boolean).join(' · ');
@@ -168,56 +170,57 @@ tool({
   return clip(lines.join('\n'));
 });
 
+const KIND_LABEL = { eind: 'eindversie', upload: 'geüpload', ruw: 'ruwe versie' };
+
 tool({
-  name: 'documenten_lijst', title: 'Documenten',
-  description: 'Toont de documenten van een project of chat (ruwe versies, eindversies, geüploade bestanden), met versies, datum en koppelingen.',
-  inputSchema: schema({ ruimte: RUIMTE }, ['ruimte'])
-}, async ({ ruimte }) => {
-  const sp = await space(ruimte);
+  name: 'list_documents', title: 'Documenten',
+  description: 'Lists the documents of a project or chat (raw versions, final versions, uploaded files) with versions, date and links.',
+  inputSchema: schema({ space: SPACE }, ['space'])
+}, async args => {
+  const sp = await space(args.space);
   const docs = await api('GET', `${sp.base}/documents`);
   if (!docs.length) return `${sp.name} heeft nog geen documenten.`;
-  const kind = k => ({ eind: 'eindversie', upload: 'geüpload', ruw: 'ruwe versie' }[k] || k);
-  return [`# Documenten van ${sp.name}`, ...docs.map(d => `- id ${d.id} · “${d.title}” · ${kind(d.kind)} · versie ${d.version}/${d.versions} · ${(d.createdAt || '').slice(0, 16).replace('T', ' ')}${d.from ? ` · gedachten ${d.from} t/m ${d.to}` : ''}${d.fileName ? ` · bestand ${d.fileName}` : ''}`)].join('\n');
+  return [`# Documenten van ${sp.name}`, ...docs.map(d => `- id ${d.id} · “${d.title}” · ${KIND_LABEL[d.kind] || d.kind} · versie ${d.version}/${d.versions} · ${(d.createdAt || '').slice(0, 16).replace('T', ' ')}${d.from ? ` · gedachten ${d.from} t/m ${d.to}` : ''}${d.fileName ? ` · bestand ${d.fileName}` : ''}`)].join('\n');
 });
 
 tool({
-  name: 'document_lezen', title: 'Document lezen',
-  description: 'Leest één document (id uit documenten_lijst). Formaat: markdown (standaard), tekst, of html (zoals Portflow het verwacht bij portflow_add_evidence van canvas-mcp).',
-  inputSchema: schema({ ruimte: RUIMTE, id: { type: 'string', description: 'Id van het document.' }, formaat: { type: 'string', enum: ['markdown', 'tekst', 'html'], description: 'markdown (standaard), tekst of html.' } }, ['ruimte', 'id'])
-}, async ({ ruimte, id, formaat }) => {
-  const sp = await space(ruimte);
+  name: 'read_document', title: 'Document lezen',
+  description: 'Reads one document (id from list_documents). Format: markdown (default), text, or html (as Portflow expects for portflow_add_evidence from canvas-mcp).',
+  inputSchema: schema({ space: SPACE, id: { type: 'string', description: 'Document id.' }, format: { type: 'string', enum: ['markdown', 'text', 'html'], description: 'markdown (default), text or html.' } }, ['space', 'id'])
+}, async ({ space: name, id, format }) => {
+  const sp = await space(name);
   const d = await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}`);
-  const fmt = { tekst: 'txt', html: 'html' }[formaat];
-  const body = fmt ? await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}/export/${fmt}`, undefined, { raw: true }) : d.content;
-  if (formaat === 'html') return clip(body || '');
-  return clip(`# ${d.title}\n(${d.kind}, ${(d.createdAt || '').slice(0, 16).replace('T', ' ')}${d.note ? ` — ${d.note}` : ''})\n\n${body || '(geen tekst)'}`);
+  const exportFormat = { text: 'txt', html: 'html' }[format];
+  const body = exportFormat ? await api('GET', `${sp.base}/documents/${encodeURIComponent(id)}/export/${exportFormat}`, undefined, { raw: true }) : d.content;
+  if (format === 'html') return clip(body || '');
+  return clip(`# ${d.title}\n(${KIND_LABEL[d.kind] || d.kind}, ${(d.createdAt || '').slice(0, 16).replace('T', ' ')}${d.note ? ` — ${d.note}` : ''})\n\n${body || '(geen tekst)'}`);
 });
 
 tool({
-  name: 'feedback_lezen', title: 'Feedback lezen',
-  description: 'Leest de feedback van een project (van docenten of anderen), met de vragen die erin stonden, mijn antwoorden en wat ik ervan leerde.',
-  inputSchema: schema({ ruimte: RUIMTE, van: PERIODE.van, tot: PERIODE.tot }, ['ruimte'])
-}, async ({ ruimte, van, tot }) => {
-  const sp = await space(ruimte);
+  name: 'read_feedback', title: 'Feedback lezen',
+  description: 'Reads the feedback of a project (from teachers or others), with the questions it contained, the user\'s answers and what the user learned from it.',
+  inputSchema: schema({ space: SPACE, from: PERIOD.from, to: PERIOD.to }, ['space'])
+}, async ({ space: name, from, to }) => {
+  const sp = await space(name);
   if (sp.type !== 'projecten') return 'Feedback bestaat alleen bij projecten.';
-  const items = (await api('GET', `${sp.base}/feedback`)).filter(f => (!van || f.date >= van) && (!tot || f.date <= tot));
+  const items = (await api('GET', `${sp.base}/feedback`)).filter(f => (!from || f.date >= from) && (!to || f.date <= to));
   if (!items.length) return 'Geen feedback in deze periode.';
   return clip(items.map(f => [
     `## ${f.date} · ${f.title}${f.from ? ` (van ${f.from})` : ''}`,
     f.text || '',
-    ...(f.questions || []).map(q => `VRAAG: ${q.q}\nMIJN ANTWOORD: ${q.a || '(nog niet beantwoord)'}`),
+    ...(f.questions || []).map(x => `VRAAG: ${x.q}\nMIJN ANTWOORD: ${x.a || '(nog niet beantwoord)'}`),
     f.learned ? `WAT IK ERVAN LEERDE: ${f.learned}` : ''
   ].filter(Boolean).join('\n')).join('\n\n'));
 });
 
 tool({
-  name: 'kaarten_lijst', title: 'Kanbankaarten',
-  description: 'Toont de kaarten (tickets/user stories) van het Kanbanbord van een project, per kolom, met Jira/Trello-sleutel en hoeveel er aan gekoppeld is.',
-  inputSchema: schema({ ruimte: RUIMTE, zoek: { type: 'string', description: 'Alleen kaarten met dit woord of nummer (optioneel).' } }, ['ruimte'])
-}, async ({ ruimte, zoek }) => {
-  const sp = await space(ruimte);
+  name: 'list_cards', title: 'Kanbankaarten',
+  description: 'Lists the cards (tickets/user stories) on the Kanban board of a project, per column, with their Jira/Trello key and how many thoughts are linked to them.',
+  inputSchema: schema({ space: SPACE, search: { type: 'string', description: 'Only cards containing this word or number (optional).' } }, ['space'])
+}, async ({ space: name, search }) => {
+  const sp = await space(name);
   const b = await boardOf(sp);
-  const f = fold(zoek || '');
+  const f = fold(search || '');
   const linked = id => sp.entries.filter(e => (e.links || []).some(l => l.id === id)).length;
   const out = [`# Kanban van ${sp.name}${b.link ? ` (gekoppeld met ${b.link.kind === 'jira' ? 'Jira' : 'Trello'}: ${b.link.target.name})` : ''}`];
   for (const col of b.columns) {
@@ -230,175 +233,177 @@ tool({
 });
 
 tool({
-  name: 'zoeken', title: 'Zoeken in Leerjournaal',
-  description: 'Zoekt in alle gedachten, vragen, antwoorden en documenten van alle projecten en chats.',
-  inputSchema: schema({ zoekterm: { type: 'string', description: 'Woord of zin (minstens 2 tekens).' } }, ['zoekterm'])
-}, async ({ zoekterm }) => {
-  const r = await api('GET', `/api/search?q=${encodeURIComponent(zoekterm)}`);
+  name: 'search', title: 'Zoeken in Leerjournaal',
+  description: 'Searches all thoughts, questions, answers and documents of all projects and chats.',
+  inputSchema: schema({ query: { type: 'string', description: 'Word or phrase (at least 2 characters).' } }, ['query'])
+}, async ({ query }) => {
+  const r = await api('GET', `/api/search?q=${encodeURIComponent(query)}`);
   const hits = r.results || [];
-  if (!hits.length) return `Niets gevonden voor “${zoekterm}”.`;
-  return clip([`${hits.length} resultaten voor “${zoekterm}”:`, ...hits.map(h => `- ${h.spaceName} · ${h.kind === 'document' ? `document “${h.title}” (id ${h.id})` : `${h.kind} ${day(h.id)} ${hhmm(h.id)}`}: ${h.snippet}`)].join('\n'));
+  if (!hits.length) return `Niets gevonden voor “${query}”.`;
+  return clip([`${hits.length} resultaten voor “${query}”:`, ...hits.map(h => `- ${h.spaceName} · ${h.kind === 'document' ? `document “${h.title}” (id ${h.id})` : `${h.kind} ${day(h.id)} ${hhmm(h.id)}`}: ${h.snippet}`)].join('\n'));
 });
 
-// ---------- documentopdracht ----------
-// Precies dezelfde opdracht als "Kopieer prompt" in de app: regels + template + notities (+ feedback,
-// + bij een kaart de gekoppelde documenten). Claude schrijft daarna het document en slaat het op.
+// ---------- document task ----------
+// Exactly the same task as "Kopieer prompt" in the app: rules + template + notes (+ feedback,
+// + for a card the linked documents). Claude then writes the document and saves it.
 async function documentTask(args) {
-  const sp = await space(args.ruimte);
+  const sp = await space(args.space);
   const p = period(sp, args);
   const body = { from: p.from || '', to: p.to || '' };
-  let title = args.titel;
+  let title = args.title;
   if (args.chats?.length) {
     if (sp.type !== 'projecten') throw new Error('Chats kiezen kan alleen binnen een project.');
     body.threads = args.chats.map(n => threadOf(sp, n).id);
   }
   let card = null;
-  if (args.kaart) { card = cardOf(await boardOf(sp), args.kaart); body.card = card.id; }
+  if (args.card) { card = cardOf(await boardOf(sp), args.card); body.card = card.id; }
   if (!title) title = card ? cardName(card) : args.sprint ? sprintOf(sp, args.sprint).name : sp.name;
   body.title = title;
   const r = await api('POST', `${sp.base}/prompt`, body);
   return { sp, p, title, card, count: r.count, prompt: r.prompt };
 }
 const DOC_ARGS = {
-  ruimte: RUIMTE, ...PERIODE,
-  chats: { type: 'array', items: { type: 'string' }, description: 'Alleen deze chats binnen het project ("Algemeen" en/of namen). Leeg = alle.' },
-  kaart: { type: 'string', description: 'Document over één kaart: sleutel (PROJ-22), nummer of titel. Alleen wat eraan gekoppeld is gaat mee.' },
-  titel: { type: 'string', description: 'Titel van het document (standaard: sprint, kaart of projectnaam).' }
+  space: SPACE, ...PERIOD,
+  chats: { type: 'array', items: { type: 'string' }, description: 'Only these chats inside the project ("Algemeen" and/or names). Empty = all.' },
+  card: { type: 'string', description: 'Document about one card: key (PROJ-22), number or title. Only what is linked to it is included.' },
+  title: { type: 'string', description: 'Document title (default: sprint, card or project name).' }
 };
 
 tool({
-  name: 'documentopdracht', title: 'Opdracht voor een document',
-  description: 'Geeft de volledige opdracht om een document te schrijven, precies zoals de knop "Kopieer prompt" in Leerjournaal: de regels (alleen de eigen woorden van de gebruiker), het template van het project of de chat, en de notities uit de gekozen periode, sprint, chats of kaart. Volg die opdracht exact en sla het resultaat op met document_opslaan.',
-  inputSchema: schema(DOC_ARGS, ['ruimte'])
+  name: 'document_task', title: 'Opdracht voor een document',
+  description: 'Returns the complete task for writing a document, exactly like the "Kopieer prompt" button in Leerjournaal: the rules (only the user\'s own words), the template of the project or chat, and the notes from the chosen period, sprint, chats or card. Follow that task exactly and save the result with save_document.',
+  inputSchema: schema(DOC_ARGS, ['space'])
 }, async args => {
   const t = await documentTask(args);
   if (!t.count) return `Er zijn geen notities voor ${t.sp.name} in deze selectie (${t.p.label}). Kies een andere periode, sprint of kaart.`;
   return clip(`${t.prompt}
 
 ---
-Opslaan: schrijf het document volgens de opdracht hierboven en roep daarna document_opslaan aan met
-ruimte "${t.sp.name}", titel "${t.title}", soort "ruw"${t.p.from ? `, van "${t.p.from}"` : ''}${t.p.to ? `, tot "${t.p.to}"` : ''}${t.card ? `, kaart "${cardName(t.card)}"` : ''}.
-Laat het document daarna aan de gebruiker zien; hij maakt er zelf een eindversie van.`);
+Saving: write the document following the task above, then call save_document with
+space "${t.sp.name}", title "${t.title}", kind "raw"${t.p.from ? `, from "${t.p.from}"` : ''}${t.p.to ? `, to "${t.p.to}"` : ''}${t.card ? `, card "${cardName(t.card)}"` : ''}.
+Then show the document to the user; the user turns it into a final version.`);
 });
 
-// ---------- opslaan (alleen nieuwe dingen; niets verwijderen of overschrijven) ----------
+// ---------- saving (only new things; nothing is deleted or overwritten) ----------
 tool({
-  name: 'document_opslaan', title: 'Document opslaan in Leerjournaal', write: true,
-  description: 'Slaat een document op in Leerjournaal, standaard als ruwe versie. Er wordt altijd een NIEUW document of een nieuwe versie gemaakt; bestaande documenten worden nooit overschreven. Gebruik gebaseerd_op (id) om een nieuwe versie van een bestaand document te maken. Sla alleen tekst op die uit de eigen woorden van de gebruiker bestaat.',
+  name: 'save_document', title: 'Document opslaan in Leerjournaal', write: true,
+  description: 'Saves a document in Leerjournaal, as a raw version by default. It always creates a NEW document or a new version; existing documents are never overwritten. Use based_on (id) to create a new version of an existing document. Only save text that consists of the user\'s own words.',
   inputSchema: schema({
-    ruimte: RUIMTE,
-    titel: { type: 'string', description: 'Titel van het document.' },
-    inhoud: { type: 'string', description: 'Het document in Markdown.' },
-    soort: { type: 'string', enum: ['ruw', 'eind'], description: 'ruw (standaard) of eind. Kies eind alleen als de gebruiker dat uitdrukkelijk vraagt.' },
-    van: PERIODE.van, tot: PERIODE.tot,
-    kaart: { type: 'string', description: 'Koppel het document aan deze kaart (sleutel, nummer of titel).' },
-    gebaseerd_op: { type: 'string', description: 'Id van het document waarvan dit een nieuwe versie is (optioneel).' }
-  }, ['ruimte', 'titel', 'inhoud'])
+    space: SPACE,
+    title: { type: 'string', description: 'Document title.' },
+    content: { type: 'string', description: 'The document in Markdown.' },
+    kind: { type: 'string', enum: ['raw', 'final'], description: 'raw (default) or final. Only choose final when the user explicitly asks for it.' },
+    from: PERIOD.from, to: PERIOD.to,
+    card: { type: 'string', description: 'Link the document to this card (key, number or title).' },
+    based_on: { type: 'string', description: 'Id of the document this is a new version of (optional).' }
+  }, ['space', 'title', 'content'])
 }, async args => {
-  const sp = await space(args.ruimte);
-  const inhoud = String(args.inhoud || '').trim();
-  if (!inhoud) throw new Error('Het document is leeg.');
-  if (inhoud.length > 500000) throw new Error('Dit document is te groot (meer dan 500.000 tekens).');
-  for (const d of [args.van, args.tot]) if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error(`Datum “${d}” moet de vorm JJJJ-MM-DD hebben.`);
-  const body = { kind: args.soort === 'eind' ? 'eind' : 'ruw', title: String(args.titel).trim().slice(0, 200), content: inhoud, from: args.van || null, to: args.tot || null, generatedBy: 'Claude (via MCP)' };
-  if (args.gebaseerd_op) {
+  const sp = await space(args.space);
+  const content = String(args.content || '').trim();
+  if (!content) throw new Error('Het document is leeg.');
+  if (content.length > 500000) throw new Error('Dit document is te groot (meer dan 500.000 tekens).');
+  for (const d of [args.from, args.to]) if (d && !isDay(d)) throw new Error(`Datum “${d}” moet de vorm JJJJ-MM-DD hebben.`);
+  // Stored kinds are part of the data format: 'ruw' (raw) and 'eind' (final).
+  const body = { kind: args.kind === 'final' ? 'eind' : 'ruw', title: String(args.title).trim().slice(0, 200), content, from: args.from || null, to: args.to || null, generatedBy: 'Claude (via MCP)' };
+  if (args.based_on) {
     const docs = await api('GET', `${sp.base}/documents`);
-    if (!docs.some(d => d.id === args.gebaseerd_op)) throw new Error(`Document ${args.gebaseerd_op} bestaat niet in ${sp.name}. Zie documenten_lijst.`);
-    body.basedOn = args.gebaseerd_op;
+    if (!docs.some(d => d.id === args.based_on)) throw new Error(`Document ${args.based_on} bestaat niet in ${sp.name}. Zie list_documents.`);
+    body.basedOn = args.based_on;
   }
-  if (args.kaart) body.links = [cardOf(await boardOf(sp), args.kaart).id];
+  if (args.card) body.links = [cardOf(await boardOf(sp), args.card).id];
   const d = await api('POST', `${sp.base}/documents`, body);
-  return `Opgeslagen in ${sp.name} → Documenten: “${d.title}” (${d.kind === 'eind' ? 'eindversie' : 'ruwe versie'}, id ${d.id}). De gebruiker kan het in Leerjournaal nalezen en er een eindversie van maken.`;
+  return `Opgeslagen in ${sp.name} → Documenten: “${d.title}” (${KIND_LABEL[d.kind]}, id ${d.id}). De gebruiker kan het in Leerjournaal nalezen en er een eindversie van maken.`;
 });
 
 tool({
-  name: 'vragen_toevoegen', title: 'Vragen toevoegen', write: true,
-  description: 'Zet 1 tot 5 open vragen in een project of chat, als "vraag van AI". De gebruiker beantwoordt ze zelf in Leerjournaal. Stel alleen vragen; geef geen antwoorden, meningen of adviezen. Gedachten namens de gebruiker schrijven kan niet.',
+  name: 'add_questions', title: 'Vragen toevoegen', write: true,
+  description: 'Adds 1 to 5 open questions to a project or chat as "question from AI". The user answers them in Leerjournaal. Only ask questions; give no answers, opinions or advice. Writing thoughts on behalf of the user is not possible.',
   inputSchema: schema({
-    ruimte: RUIMTE,
-    vragen: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 5, description: 'De vragen (open vragen, kort).' },
-    chat: { type: 'string', description: 'Chat binnen het project waarin de vragen komen (standaard Algemeen).' }
-  }, ['ruimte', 'vragen'])
+    space: SPACE,
+    questions: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 5, description: 'The questions (open, short).' },
+    chat: { type: 'string', description: 'Chat inside the project to put the questions in (default Algemeen).' }
+  }, ['space', 'questions'])
 }, async args => {
-  const sp = await space(args.ruimte);
-  const vragen = (args.vragen || []).map(v => String(v).trim().slice(0, 500)).filter(Boolean).slice(0, 5);
-  if (!vragen.length) throw new Error('Geef minstens één vraag.');
+  const sp = await space(args.space);
+  const questions = (args.questions || []).map(x => String(x).trim().slice(0, 500)).filter(Boolean).slice(0, 5);
+  if (!questions.length) throw new Error('Geef minstens één vraag.');
   const thread = args.chat && sp.type === 'projecten' ? threadOf(sp, args.chat).id : '';
-  for (const q of vragen) await api('POST', `${sp.base}/entries`, { kind: 'vraag', question: q, source: 'ai', ...(thread ? { thread } : {}) });
-  return `${vragen.length} ${vragen.length === 1 ? 'vraag' : 'vragen'} toegevoegd aan ${sp.name}. De gebruiker beantwoordt ze in Leerjournaal.`;
+  for (const question of questions) await api('POST', `${sp.base}/entries`, { kind: 'vraag', question, source: 'ai', ...(thread ? { thread } : {}) });
+  return `${questions.length} ${questions.length === 1 ? 'vraag' : 'vragen'} toegevoegd aan ${sp.name}. De gebruiker beantwoordt ze in Leerjournaal.`;
 });
 
-// ---------- kant-en-klare opdrachten (in het menu van Claude) ----------
+// ---------- ready-made prompts (in Claude's menu) ----------
+// The prompt text is the user's own request to Claude, so it is Dutch.
 const prompts = [];
 const prompt = (def, build) => prompts.push({ ...def, build });
-const q = v => `“${String(v).trim()}”`;
-const saveStep = (ro, extra = '') => ro
+const quote = v => `“${String(v).trim()}”`;
+const saveStep = (readOnly, extra = '') => readOnly
   ? 'Laat het document hieronder zien (opslaan kan niet: Leerjournaal staat in alleen-lezen-stand).'
-  : `Sla het op met document_opslaan als ruwe versie${extra}, en laat het daarna hier zien.`;
+  : `Sla het op met save_document als ruwe versie (kind "raw")${extra}, en laat het daarna hier zien.`;
 
 prompt({
-  name: 'document_maken', title: 'Document maken (sprint of periode)',
+  name: 'make_document', title: 'Document maken (sprint of periode)',
   description: 'Maakt een document van je gedachten in een project of chat, voor een sprint of periode, en zet het als ruwe versie in Leerjournaal.',
   arguments: [
-    { name: 'ruimte', description: 'Naam van het project of de chat', required: true },
+    { name: 'space', description: 'Naam van het project of de chat', required: true },
     { name: 'sprint', description: 'Naam van de sprint (leeg = de periode hieronder, of de laatste twee weken)' },
-    { name: 'periode', description: 'Optioneel: JJJJ-MM-DD t/m JJJJ-MM-DD' }
+    { name: 'period', description: 'Optioneel: JJJJ-MM-DD t/m JJJJ-MM-DD' }
   ]
 }, (a, { readOnly }) => {
-  const m = String(a.periode || '').match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/);
+  const m = String(a.period || '').match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/);
   const twoWeeks = new Date(Date.now() - 13 * 864e5).toISOString().slice(0, 10);
-  const scope = a.sprint ? `sprint ${q(a.sprint)}` : m ? `de periode ${m[1]} t/m ${m[2]}` : `de laatste twee weken (vanaf ${twoWeeks})`;
-  const args = a.sprint ? `sprint ${q(a.sprint)}` : m ? `van "${m[1]}" en tot "${m[2]}"` : `van "${twoWeeks}"`;
-  return `Maak een document van mijn Leerjournaal voor ${q(a.ruimte)}, ${scope}.
-1. Roep documentopdracht aan met ruimte ${q(a.ruimte)} en ${args}.
+  const scope = a.sprint ? `sprint ${quote(a.sprint)}` : m ? `de periode ${m[1]} t/m ${m[2]}` : `de laatste twee weken (vanaf ${twoWeeks})`;
+  const args = a.sprint ? `sprint ${quote(a.sprint)}` : m ? `from "${m[1]}" en to "${m[2]}"` : `from "${twoWeeks}"`;
+  return `Maak een document van mijn Leerjournaal voor ${quote(a.space)}, ${scope}.
+1. Roep document_task aan met space ${quote(a.space)} en ${args}.
 2. Schrijf het document precies volgens die opdracht: alleen mijn eigen woorden, het template volgen, niets toevoegen.
 3. ${saveStep(readOnly, ' (met dezelfde titel en periode)')}
 4. Noem kort welke onderdelen van het template geen input hadden, zodat ik weet waar ik nog over kan schrijven.`;
 });
 
 prompt({
-  name: 'kaart_document', title: 'Document over een kaart (ticket)',
+  name: 'card_document', title: 'Document over een kaart (ticket)',
   description: 'Maakt een document over één kaart van het Kanbanbord: alleen de gekoppelde gedachten, feedback en documenten.',
   arguments: [
-    { name: 'ruimte', description: 'Naam van het project', required: true },
-    { name: 'kaart', description: 'Sleutel (bijv. PROJ-22), nummer of titel van de kaart', required: true }
+    { name: 'space', description: 'Naam van het project', required: true },
+    { name: 'card', description: 'Sleutel (bijv. PROJ-22), nummer of titel van de kaart', required: true }
   ]
-}, (a, { readOnly }) => `Maak een document over kaart ${q(a.kaart)} in mijn Leerjournaal-project ${q(a.ruimte)}.
-1. Roep documentopdracht aan met ruimte ${q(a.ruimte)} en kaart ${q(a.kaart)}.
+}, (a, { readOnly }) => `Maak een document over kaart ${quote(a.card)} in mijn Leerjournaal-project ${quote(a.space)}.
+1. Roep document_task aan met space ${quote(a.space)} en card ${quote(a.card)}.
 2. Schrijf het document precies volgens die opdracht: alleen mijn eigen woorden; de kaart zelf is alleen context.
 3. ${saveStep(readOnly, ', gekoppeld aan dezelfde kaart')}`);
 
 prompt({
-  name: 'vragen_stellen', title: 'Vragen over mijn gedachten',
+  name: 'ask_questions', title: 'Vragen over mijn gedachten',
   description: 'Laat Claude je recente gedachten lezen en drie open vragen stellen die je helpen verder te denken. De vragen komen in Leerjournaal; jij beantwoordt ze.',
   arguments: [
-    { name: 'ruimte', description: 'Naam van het project of de chat', required: true },
+    { name: 'space', description: 'Naam van het project of de chat', required: true },
     { name: 'chat', description: 'Optioneel: chat binnen het project' }
   ]
-}, (a, { readOnly }) => `Lees mijn gedachten van de laatste twee weken in Leerjournaal ${q(a.ruimte)}${a.chat ? `, chat ${q(a.chat)}` : ''} (gedachten_lezen).
+}, (a, { readOnly }) => `Lees mijn gedachten van de laatste twee weken in Leerjournaal ${quote(a.space)}${a.chat ? `, chat ${quote(a.chat)}` : ''} (read_thoughts).
 Stel daarna precies drie korte, open vragen die mij helpen mijn eigen redenering, keuzes, twijfels, fouten en wat ik geleerd heb onder woorden te brengen. Geef zelf geen antwoorden, meningen of adviezen, en herhaal geen vragen die er al staan.
-${readOnly ? 'Zet de vragen hier neer.' : `Zet ze met vragen_toevoegen in ${q(a.ruimte)}${a.chat ? ` (chat ${q(a.chat)})` : ''} en laat ze hier ook zien.`}`);
+${readOnly ? 'Zet de vragen hier neer.' : `Zet ze met add_questions in ${quote(a.space)}${a.chat ? ` (chat ${quote(a.chat)})` : ''} en laat ze hier ook zien.`}`);
 
 prompt({
-  name: 'portflow_inleveren', title: 'Document in Portflow zetten',
+  name: 'submit_to_portflow', title: 'Document in Portflow zetten',
   description: 'Zet een document uit Leerjournaal als bewijs in Portflow, via canvas-mcp. Claude vraagt eerst om bevestiging.',
   arguments: [
-    { name: 'ruimte', description: 'Naam van het project', required: true },
+    { name: 'space', description: 'Naam van het project', required: true },
     { name: 'document', description: 'Titel of id van het document (leeg = de nieuwste eindversie)' },
-    { name: 'cursus', description: 'Optioneel: naam van de Canvas-cursus' }
+    { name: 'course', description: 'Optioneel: naam van de Canvas-cursus' }
   ]
-}, a => `Ik wil een document uit Leerjournaal ${q(a.ruimte)} als bewijs in Portflow zetten.
-1. Zoek het document met documenten_lijst: ${a.document ? q(a.document) : 'de nieuwste eindversie'}. Is er alleen een ruwe versie, vraag dan eerst of ik die echt wil gebruiken.
-2. Haal het op met document_lezen, formaat "html".
-3. Zoek met canvas-mcp de cursus${a.cursus ? ` ${q(a.cursus)}` : ''} (canvas_list_courses) en de goals (portflow_list_goals). Stel voor bij welke goals het past, met een korte motivatie in mijn eigen woorden uit het document.
+}, a => `Ik wil een document uit Leerjournaal ${quote(a.space)} als bewijs in Portflow zetten.
+1. Zoek het document met list_documents: ${a.document ? quote(a.document) : 'de nieuwste eindversie'}. Is er alleen een ruwe versie, vraag dan eerst of ik die echt wil gebruiken.
+2. Haal het op met read_document, format "html".
+3. Zoek met canvas-mcp de cursus${a.course ? ` ${quote(a.course)}` : ''} (canvas_list_courses) en de goals (portflow_list_goals). Stel voor bij welke goals het past, met een korte motivatie in mijn eigen woorden uit het document.
 4. Laat mij vóór het inleveren zien: cursus, titel, sectie/collectie, goals en motivatie. Wacht op mijn uitdrukkelijke "ja".
 5. Pas na mijn ja: portflow_add_evidence met de HTML. Lever géén snapshot in (portflow_submit_snapshot), tenzij ik daar apart om vraag en het opnieuw bevestig.
 Heb je geen canvas-mcp, zeg dat dan en geef me de HTML om zelf te plakken.`);
 
-// ---------- uitleg voor Claude ----------
-const INSTRUCTIONS = readOnly => `Leerjournaal is het persoonlijke leerjournaal van de gebruiker: gedachten per project (school/werk) of chat (persoonlijk), versleuteld opgeslagen.
-Belangrijkste regel: documenten bestaan uitsluitend uit de eigen woorden van de gebruiker. Voeg geen feiten, meningen, conclusies of lessen toe die niet in de notities staan.
-Werkwijze voor een document: documentopdracht → schrijven volgens die opdracht → document_opslaan (ruwe versie) → resultaat laten zien.
-Portflow: een document kan als HTML (document_lezen, formaat html) via canvas-mcp als bewijs worden toegevoegd. Doe dat alleen na uitdrukkelijke bevestiging van de gebruiker, en lever nooit uit jezelf een snapshot in.${readOnly ? '\nDeze verbinding staat in alleen-lezen-stand: je kunt niets opslaan.' : ''}`;
+// ---------- instructions for Claude ----------
+const INSTRUCTIONS = readOnly => `Leerjournaal is the user's personal learning journal: thoughts per project (school/work) or chat (personal), stored encrypted. The user writes in Dutch; answer in the user's language.
+Main rule: documents consist only of the user's own words. Do not add facts, opinions, conclusions or lessons that are not in the notes.
+Workflow for a document: document_task → write following that task → save_document (raw version) → show the result.
+Portflow: a document can be added as evidence via canvas-mcp as HTML (read_document, format html). Only do that after the user explicitly confirms, and never submit a snapshot on your own.${readOnly ? '\nThis connection is read-only: nothing can be saved.' : ''}`;
 
 module.exports = { tools, prompts, INSTRUCTIONS, api, clip, BASE, space, period, threadOf, boardOf, cardOf, cardName };

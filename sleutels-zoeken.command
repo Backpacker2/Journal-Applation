@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dubbelklik dit bestand op je Mac om oude Leerjournaal-sleutels te zoeken en toe te voegen.
+# Double-click this file on the Mac to find and add old Leerjournaal keys.
 cd "$(dirname "$0")" || exit 1
-node tools/zoek-sleutels.js "$@"
+node tools/find-keys.js "$@"
 read -r -p "Druk op Enter om te sluiten..."

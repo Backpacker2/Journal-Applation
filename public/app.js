@@ -1,18 +1,18 @@
-// Leerjournaal – front-end (vanilla JS, geen build-stap nodig)
+// Leerjournaal – front-end (vanilla JS, no build step needed). User-facing text is Dutch.
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const state = {
   spaces: [],
   current: null,        // { type, slug, meta, entries, defaultTemplate }
-  view: 'gedachten',    // gedachten | documenten | template
+  view: 'thoughts',     // thoughts | documents | template | kanban | feedback
   replyTo: null,
-  composeMode: 'gedachte', // gedachte | vraag
-  editing: null,        // id van gedachte die bewerkt wordt
+  composeMode: 'gedachte', // gedachte (thought) | vraag (question)
+  editing: null,        // id of the entry being edited
   docs: [],
   openDoc: null,
   docEdit: false,
-  selecting: false,     // meerdere berichten selecteren
+  selecting: false,     // selecting multiple entries
   selected: new Set(),
   showArchive: (() => { try { return localStorage.getItem('lj-archive') === '1'; } catch { return false; } })(),
   docFormat: (() => { try { return localStorage.getItem('lj-docformat') || 'preview'; } catch { return 'preview'; } })(),
@@ -26,7 +26,7 @@ async function api(method, url, body) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `Fout ${res.status}`);
   if (method !== 'GET' && !url.startsWith('/api/sync') && !url.startsWith('/api/update')) {
-    // Wijziging opgeslagen: de server uploadt hem zo naar GitHub; toon de voortgang.
+    // Change saved: the server will push it to GitHub shortly; show the progress.
     [600, 5500, 12000].forEach(ms => setTimeout(() => loadStatus(), ms));
   }
   return json;
@@ -56,7 +56,7 @@ const isoDay = d => d.toLocaleDateString('sv-SE');
 function fmtDateTimeFull(iso) {
   return new Date(iso).toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-// Groepeert documenten per reeks: [nieuwste versie, alle versies (nieuwste eerst)].
+// Groups documents per series: [latest version, all versions (newest first)].
 function docSeries(docs) {
   const groups = new Map();
   for (const d of docs) { const k = d.seriesId || d.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
@@ -65,7 +65,7 @@ function docSeries(docs) {
 function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
-// Downloadt een document als .md, .txt of .docx (de server maakt het bestand).
+// Downloads a document as .md, .txt, .docx or the original upload (the server builds the file).
 async function downloadDoc(id, format, type, slug) {
   const root = type ? `/api/spaces/${type}/${slug}` : base();
   const url = format === 'file' ? `${root}/documents/${id}/file` : `${root}/documents/${id}/export/${format}`;
@@ -84,7 +84,7 @@ const dlLinks = (id, type = '', slug = '') => /_upload$/.test(id)
   ? `<span class="dl-links">↓ <button class="link" data-action="dl" data-id="${id}" data-format="file"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>origineel</button></span>`
   : `<span class="dl-links">↓ ${['md', 'txt', 'docx'].map(f => `<button class="link" data-action="dl" data-id="${id}" data-format="${f}"${type ? ` data-type="${type}" data-slug="${slug}"` : ''}>.${f}</button>`).join(' ')}</span>`;
 
-// Minimale Markdown-weergave (koppen, lijsten, vet, cursief, citaten, alinea's)
+// Minimal Markdown rendering (headings, lists, bold, italic, quotes, paragraphs)
 function md(src) {
   const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<em>$2</em>').replace(/_(.+?)_/g, '<em>$1</em>').replace(/`(.+?)`/g, '<code>$1</code>');
   const out = []; let list = null, para = [];
@@ -158,8 +158,8 @@ document.addEventListener('click', async e => {
   }
 });
 
-// ---------- ruimte openen ----------
-async function openSpace(type, slug, view = 'gedachten') {
+// ---------- opening a space ----------
+async function openSpace(type, slug, view = 'thoughts') {
   state.mainMode = null;
   try {
     state.current = await api('GET', `/api/spaces/${type}/${slug}`);
@@ -178,7 +178,7 @@ function setTopbar(title) { const el = $('#topbar-title'); if (el) el.textConten
 function closeDrawer() { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('open'); }
 $('#menu-btn').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#scrim').classList.add('open'); });
 $('#scrim').addEventListener('click', closeDrawer);
-// Op de telefoon: na een keuze in het menu sluit het menu vanzelf.
+// On a phone: the menu closes after a choice.
 $('#sidebar').addEventListener('click', e => { if (e.target.closest('.space-item, .nav-item, #settings-btn, #keys-btn, [data-open-keys]')) closeDrawer(); });
 
 function render() {
@@ -199,21 +199,21 @@ function render() {
         </div>
       </div>
       <div class="tabs">
-        <button class="tab ${state.view === 'gedachten' ? 'active' : ''}" data-view="gedachten">Gedachten</button>
-        <button class="tab ${state.view === 'documenten' ? 'active' : ''}" data-view="documenten">Documenten</button>
+        <button class="tab ${state.view === 'thoughts' ? 'active' : ''}" data-view="thoughts">Gedachten</button>
+        <button class="tab ${state.view === 'documents' ? 'active' : ''}" data-view="documents">Documenten</button>
         <button class="tab ${state.view === 'template' ? 'active' : ''}" data-view="template">Template</button>
         ${isProject && feature('kanban') ? `<button class="tab ${state.view === 'kanban' ? 'active' : ''}" data-view="kanban">Kanban</button>` : ''}
         ${isProject && feature('feedback') ? `<button class="tab ${state.view === 'feedback' ? 'active' : ''}" data-view="feedback">Feedback</button>` : ''}
       </div>
     </div>
     <div id="view"></div>`;
-  if (state.view === 'gedachten') renderThread();
-  if (state.view === 'documenten') renderDocs();
+  if (state.view === 'thoughts') renderThread();
+  if (state.view === 'documents') renderDocs();
   if (state.view === 'template') renderTemplate();
   if (state.view === 'kanban') renderBoard();
   if (state.view === 'feedback') renderFeedback();
 }
-// Functies die in Instellingen aan of uit kunnen (standaard aan).
+// Features that can be switched on or off in Settings (on by default).
 const feature = name => state.settings?.features?.[name] !== false;
 
 $('#main').addEventListener('click', async e => {
@@ -232,7 +232,7 @@ $('#main').addEventListener('click', async e => {
   try {
     if (a === 'add-key') return addKey(t);
     if (a === 'rekey') return rekey(t);
-    if (a === 'goto-docs') { state.view = 'documenten'; state.openDoc = null; return render(); }
+    if (a === 'goto-docs') { state.view = 'documents'; state.openDoc = null; return render(); }
     if (a === 'rename-space') return renameSpace();
     if (a === 'archive-space') return archiveSpace();
     if (a === 'title-entry') return titleEntry(t.dataset.id);
@@ -240,12 +240,12 @@ $('#main').addEventListener('click', async e => {
     if (a === 'select-mode') { state.selecting = !state.selecting; state.selected.clear(); return renderThread(false); }
     if (a === 'thread') return setThread(t.dataset.id);
     if (a === 'rel-entry') {
-      state.view = 'gedachten'; const en = state.current.entries.find(x => x.id === t.dataset.id);
+      state.view = 'thoughts'; const en = state.current.entries.find(x => x.id === t.dataset.id);
       if (en) state.thread = threadOfEntry(en);
       render(); return setTimeout(() => jumpTo(t.dataset.id), 150);
     }
     if (a === 'rel-feedback') { state.view = 'feedback'; render(); return; }
-    if (a === 'card-doc') { state.docCard = t.dataset.id; state.openDoc = null; state.view = 'documenten'; return render(); }
+    if (a === 'card-doc') { state.docCard = t.dataset.id; state.openDoc = null; state.view = 'documents'; return render(); }
     if (a === 'doc-unlink') { state.openDoc = { ...state.openDoc, ...(await api('PUT', `${base()}/documents/${state.openDoc.id}/links`, { links: (state.openDoc.links || []).map(l => l.id).filter(x => x !== t.dataset.id) })) }; return renderDocs(); }
     if (a === 'thread-new') return newThread();
     if (a === 'thread-rename') return renameThread();
@@ -339,9 +339,9 @@ $('#main').addEventListener('click', async e => {
   } catch (err) { fail(err); }
 });
 
-// ---------- gedachten ----------
-// ---------- kaarten (tickets) koppelen ----------
-// De kaarten van het Kanbanbord, voor @-suggesties en koppelingen. Laadt op de achtergrond.
+// ---------- thoughts ----------
+// ---------- linking cards (tickets) ----------
+// The Kanban cards, for @-suggestions and links. Loads in the background.
 async function loadCards() {
   const c = state.current;
   try { const b = await api('GET', `${base()}/board`); if (state.current === c) state.board = b; } catch {}
@@ -352,7 +352,7 @@ const cardToken = c => '@' + (c.remote?.key || c.title.replace(/[^\p{L}\p{N}]+/g
 const cardLabel = c => `${c.remote?.key ? c.remote.key + ' · ' : ''}${c.title}`;
 const linkChips = links => (links || []).map(l => cardById(l.id)).filter(Boolean)
   .map(c => `<button class="chip" data-action="open-link" data-kind="kaart" data-id="${c.id}" title="Open op het Kanbanbord">▦ ${esc(cardLabel(c))}</button>`).join('');
-// Zoekt kaarten: op sleutel (UTC-22), nummer (22) of woorden uit de titel.
+// Finds cards: by key (PROJ-22), number (22) or words from the title.
 function findCards(q) {
   const f = fold(q.replace(/^@/, '')).trim();
   const num = /^\d+$/.test(f) ? f : null;
@@ -368,7 +368,7 @@ function findCards(q) {
   };
   return cardsList().map(c => [score(c), c]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0]).slice(0, 6).map(([, c]) => c);
 }
-// @-suggesties in een tekstvak: typ @ en een stukje (of een nummer na @), kies met pijltjes en Enter/Tab.
+// @-suggestions in a text area: type @ and part of a title (or a number), pick with arrows and Enter/Tab.
 const mentionPicks = new WeakMap();
 function attachMention(ta, initial = []) {
   if (state.current?.type !== 'projecten') return;
@@ -405,16 +405,16 @@ function attachMention(ta, initial = []) {
   }, true);
   ta.addEventListener('blur', () => setTimeout(close, 150));
 }
-// Koppelingen van een tekstvak: gekozen kaarten waarvan de @-verwijzing nog in de tekst staat.
+// Links of a text area: picked cards whose @-reference is still in the text.
 function mentionLinks(ta) {
   const picks = mentionPicks.get(ta); if (!picks) return undefined;
   return [...picks].filter(id => { const c = cardById(id); return c && ta.value.includes(cardToken(c)); });
 }
 
-// ---------- chats binnen een project ----------
+// ---------- threads (chats inside a project) ----------
 const threadsOf = () => (state.current?.type === 'projecten' ? state.current.meta.threads || [] : []);
 const threadOfEntry = e => (threadsOf().some(t => t.id === e.thread) ? e.thread : '');
-// De berichten die nu zichtbaar zijn: in een project met chats alleen die van de gekozen chat.
+// The entries currently visible: in a project with threads, only those of the chosen thread.
 function visibleEntries() {
   const c = state.current;
   if (c.type !== 'projecten' || !threadsOf().length) return c.entries;
@@ -497,7 +497,7 @@ function renderThread(scroll = true) {
 const selAttrs = e => state.selecting ? ` data-sel="${e.id}"` : '';
 const selBox = e => state.selecting ? `<input type="checkbox" class="sel-box" ${state.selected.has(e.id) ? 'checked' : ''} tabindex="-1" aria-label="Selecteren">` : '';
 const titleLine = e => e.title ? `<div class="entry-title">${esc(e.title)}</div>` : '';
-// Een los bericht krijgt geen naam meer (alleen chats en projecten). Een eerder gegeven naam blijft zichtbaar en kan weg.
+// Single entries no longer get a name (only chats and projects). An earlier name stays visible and can be removed.
 const manageLinks = e => `${e.title ? `<button class="link" data-action="title-entry" data-id="${e.id}">Naam weghalen</button>` : ''}<button class="link danger" data-action="delete-entry" data-id="${e.id}">Verwijder</button>`;
 
 function thoughtCard(e, byId) {
@@ -602,7 +602,7 @@ async function sendCompose() {
       entry = await api('POST', `${base()}/entries`, body);
     } catch (err) {
       if (!(err instanceof TypeError)) throw err;
-      // Geen verbinding (bijv. op je telefoon): bewaren en later versturen.
+      // No connection (e.g. on a phone): keep it and send it later.
       entry = queueEntry(base(), body);
       toast('Geen verbinding: je gedachte wordt verstuurd zodra je weer online bent.');
     }
@@ -613,7 +613,7 @@ async function sendCompose() {
   } finally { if (ta.isConnected) ta.disabled = false; }
 }
 
-// ---------- offline wachtrij ----------
+// ---------- offline queue ----------
 const QKEY = 'lj-queue';
 const readQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch { return []; } };
 const writeQueue = q => { try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch {} };
@@ -637,7 +637,7 @@ async function flushQueue() {
   } finally { flushing = false; }
   if (sent) {
     toast(`${sent} ${sent === 1 ? 'gedachte' : 'gedachten'} van toen je offline was verstuurd`);
-    if (state.current && state.view === 'gedachten') openSpace(state.current.type, state.current.slug);
+    if (state.current && state.view === 'thoughts') openSpace(state.current.type, state.current.slug);
   }
 }
 window.addEventListener('online', flushQueue);
@@ -738,7 +738,7 @@ async function aiQuestions(btn) {
   }
 }
 
-// ---------- documenten ----------
+// ---------- documents ----------
 async function renderDocs() {
   const view = $('#view');
   view.outerHTML = `<div id="view" class="page"><div class="page-inner" id="docs-inner"><div class="hint">Laden…</div></div></div>`;
@@ -753,7 +753,7 @@ async function renderDocs() {
     const sprints = state.current.meta.sprints || [];
     const tcard = isProject && state.docCard ? cardById(state.docCard) : null;
     const todayKey = isoDay(today);
-    // Standaard de lopende sprint, anders de laatst afgelopen.
+    // Default to the current sprint, otherwise the most recent one.
     const cur = sprints.find(x => x.from <= todayKey && todayKey <= x.to) || [...sprints].reverse().find(x => x.to < todayKey) || null;
     inner.innerHTML = `
       <div class="panel">
@@ -835,7 +835,7 @@ function sprintsPanel(sprints, todayKey) {
 }
 async function saveSprints(list) {
   state.current.meta = await api('PUT', base(), { sprints: list });
-  renderDocs(); if (state.view === 'gedachten') renderThread(false);
+  renderDocs(); if (state.view === 'thoughts') renderThread(false);
 }
 async function addSprint() {
   const list = state.current.meta.sprints || [];
@@ -910,7 +910,7 @@ function renderOpenDoc(inner) {
   }
 }
 
-// Bestanden uploaden (Word, Markdown, tekst, pdf, afbeeldingen…). Het origineel blijft bewaard.
+// Upload files (Word, Markdown, text, pdf, images…). The original is kept.
 async function uploadDocs(files, links) {
   links = links || ($('#doc-card')?.value ? [$('#doc-card').value] : undefined);
   const list = [...(files || [])]; if (!list.length) return;
@@ -920,9 +920,9 @@ async function uploadDocs(files, links) {
     await api('POST', `${base()}/documents/upload`, { name: f.name, mime: f.type, data, links });
   }
   toast(list.length === 1 ? `${list[0].name} geüpload` : `${list.length} bestanden geüpload`);
-  if (state.view === 'documenten') renderDocs();
+  if (state.view === 'documents') renderDocs();
 }
-// Alle versies van dit document met datum en tijd, zodat je snel een vorige versie opent.
+// All versions of this document with date and time, to open an earlier version quickly.
 function versionStrip(d) {
   const info = (state.docs || []).find(x => x.id === d.id);
   const series = info ? (state.docs || []).filter(x => x.seriesId === info.seriesId) : [];
@@ -932,7 +932,7 @@ function versionStrip(d) {
 async function saveDoc(as) {
   const d = state.openDoc;
   const title = $('#doc-edit-title').value, content = $('#doc-edit-content').value;
-  // Opslaan maakt altijd een nieuwe versie; de vorige blijft bestaan.
+  // Saving always creates a new version; the previous one stays.
   if (as === 'update') state.openDoc = await api('POST', `${base()}/documents`, { kind: 'eind', title, content, from: d.from, to: d.to, basedOn: d.id, generatedBy: 'bewerkt door mij' });
   else state.openDoc = await api('POST', `${base()}/documents`, { kind: as, title, content, from: d.from, to: d.to, basedOn: d.id || null, generatedBy: as === 'eind' ? 'bewerkt door mij' : d.generatedBy });
   state.docEdit = false; toast(as === 'eind' ? 'Eindversie opgeslagen' : 'Opgeslagen'); renderDocs();
@@ -987,13 +987,13 @@ async function renderBoard() {
   $('#view').outerHTML = `<div id="view" class="page"><div class="board-wrap" id="board"><div class="hint">Laden…</div></div></div>`;
   try {
     state.board = await api('GET', `${base()}/board`); drawBoard();
-    if (state.board.link) refreshBoard(true); // bij openen meteen de laatste stand ophalen
+    if (state.board.link) refreshBoard(true); // fetch the latest state right away when opening
   } catch (e) { fail(e); }
 }
 const svcName = k => (k === 'jira' ? 'Jira' : 'Trello');
 const fold = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const DONE_RE = /\b(done|klaar|afgerond|gereed|voltooid|finished|closed|complete[d]?)\b/i;
-// Weergave van het bord (filter, compact, ingeklapte kolommen): per project in deze browser.
+// Board view (filter, compact, collapsed columns): per project in this browser.
 function boardView() {
   try { return JSON.parse(localStorage.getItem(`lj-board-${state.current.type}-${state.current.slug}`) || '{}'); } catch { return {}; }
 }
@@ -1002,14 +1002,14 @@ function saveBoardView(patch) {
   try { localStorage.setItem(`lj-board-${state.current.type}-${state.current.slug}`, JSON.stringify(v)); } catch {}
   return v;
 }
-// Kolommen zo hoog als het scherm, zodat de pagina niet lang wordt; elke kolom scrolt zelf.
+// Columns as tall as the screen so the page does not grow; each column scrolls on its own.
 function fitBoard() {
   const bd = $('.board'); if (!bd) return;
   const top = bd.getBoundingClientRect().top + (bd.closest('.page')?.scrollTop || 0);
   bd.style.setProperty('--col-max', `${Math.max(320, innerHeight - top - 24)}px`);
 }
 addEventListener('resize', () => fitBoard());
-// Wat er aan een kaart hangt: gedachten (via @), feedback en documenten. Plus: document maken of bestand toevoegen.
+// What is linked to a card: thoughts (via @), feedback and documents. Plus: create a document or add a file.
 async function drawCardRelated(id) {
   const el = $('#kr-' + id); if (!el) return;
   try {
@@ -1033,7 +1033,7 @@ async function addColumn(name) {
   const r = await api('POST', `${base()}/board/columns`, { name });
   state.board = r.board; drawBoard(); toast(`Kolom “${name}” toegevoegd`);
 }
-// Verwerkt het antwoord van een kaart-actie: nieuw bord, en meldingen van Trello/Jira.
+// Handles the response of a card action: new board state, and messages from Trello/Jira.
 function applyBoardResult(r) {
   if (r?.board) state.board = r.board;
   const errs = [...(r?.summary?.errors || []), ...(r?.error ? [r.error] : [])];
@@ -1144,7 +1144,7 @@ function drawBoard() {
   f.addEventListener('input', () => { saveBoardView({ filter: f.value }); const pos = f.selectionStart; drawBoard(); const nf = $('#board-filter'); nf.focus(); nf.setSelectionRange(pos, pos); });
   $('#board-compact').addEventListener('change', e => { saveBoardView({ compact: e.target.checked }); drawBoard(); });
   el.querySelectorAll('[data-add]').forEach(inp => inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); addCard(inp.dataset.add).catch(fail); } }));
-  // Slepen tussen kolommen (computer). Op een telefoon kies je de kolom in het bewerkscherm.
+  // Drag between columns (desktop). On a phone the column is chosen in the edit view.
   el.querySelectorAll('.kcard[draggable]').forEach(card => {
     card.addEventListener('dragstart', ev => { ev.dataTransfer.setData('text/plain', card.dataset.card); card.classList.add('dragging'); });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
@@ -1285,11 +1285,11 @@ async function deleteFeedback(id) {
 }
 
 async function openLink(d) {
-  if (d.kind === 'document') { state.view = 'documenten'; render(); state.openDoc = await api('GET', `${base()}/documents/${d.id}`); return renderDocs(); }
+  if (d.kind === 'document') { state.view = 'documents'; render(); state.openDoc = await api('GET', `${base()}/documents/${d.id}`); return renderDocs(); }
   state.view = 'kanban'; state.cardEdit = d.id; render();
 }
 
-// ---------- zoeken ----------
+// ---------- search ----------
 let searchTimer;
 $('#search').addEventListener('input', e => {
   clearTimeout(searchTimer);
@@ -1317,7 +1317,7 @@ async function runSearch(q) {
   const kindLabel = { gedachte: 'Gedachte', vraag: 'Vraag', document: 'Document', ruimte: 'Project/chat' };
   try {
     const { results } = await api('GET', `/api/search?q=${encodeURIComponent(q)}`);
-    if ($('#search').value.trim() !== q) return; // er is intussen verder getypt
+    if ($('#search').value.trim() !== q) return; // the user kept typing meanwhile
     $('#main').innerHTML = `<div class="header-wrap" style="padding-bottom:18px"><h1>Zoeken</h1>
       <div class="sub">${results.length ? `${results.length}${results.length === 100 ? '+' : ''} resultaten` : 'Niets gevonden'} voor “${esc(q)}”</div></div>
       <div class="page"><div class="page-inner">
@@ -1335,7 +1335,7 @@ async function runSearch(q) {
 async function openHit(d) {
   state.mainMode = null;
   if (d.kind === 'document') {
-    await openSpace(d.type, d.slug, 'documenten');
+    await openSpace(d.type, d.slug, 'documents');
     state.openDoc = await api('GET', `${base()}/documents/${d.id}`); renderDocs();
   } else {
     await openSpace(d.type, d.slug);
@@ -1345,7 +1345,7 @@ async function openHit(d) {
   }
 }
 
-// ---------- alle documenten ----------
+// ---------- all documents ----------
 $('#all-docs-btn').addEventListener('click', () => { state.docsFilter = state.docsFilter || 'alle'; renderAllDocs(); });
 async function renderAllDocs() {
   setTopbar('Alle documenten');
@@ -1371,7 +1371,7 @@ async function renderAllDocs() {
   } catch (e) { fail(e); }
 }
 
-// ---------- sync & thema ----------
+// ---------- sync & theme ----------
 async function loadStatus() {
   try {
     state.status = await api('GET', '/api/status');
@@ -1414,7 +1414,7 @@ async function loadSettings() {
 }
 $('#settings-btn').addEventListener('click', openSettings);
 
-// ---------- inloggen bij GitHub ----------
+// ---------- signing in to GitHub ----------
 let devicePoll = null;
 async function openGitHubLogin() {
   clearTimeout(devicePoll);
@@ -1476,7 +1476,7 @@ async function openGitHubLogin() {
   } catch (e) { fail(e); }
 }
 
-// ---------- instellingen ----------
+// ---------- settings ----------
 const THEME_INFO = {
   dark: ['Donker', ['#12141b', '#1f2330', '#7c7cf0']], light: ['Licht', ['#f6f6f3', '#ffffff', '#5b5bd6']],
   night: ['Nacht (zwart)', ['#000000', '#111114', '#8f8ff5']], sepia: ['Sepia', ['#f4ecdc', '#fffaf0', '#b0602c']],
@@ -1526,11 +1526,11 @@ async function openSettings() {
         <ol class="steps">
           <li>Op de computer met de Claude-app: dubbelklik <b>Claude-koppelen.command</b> in je leerjournaal-map, of voer uit:
             <pre class="cmd">cd pad/naar/leerjournaal &amp;&amp; git pull
-bash tools/mcp-installeren.sh ${esc(location.origin)}</pre></li>
+bash tools/install-mcp.sh ${esc(location.origin)}</pre></li>
           <li>Sluit de Claude-app helemaal af en open hem opnieuw.</li>
           <li>Vraag in Claude bijvoorbeeld: <i>“Maak met Leerjournaal het document voor Sprint 2 van mijn project”</i>, of kies via <b>+</b> een kant-en-klare opdracht.</li>
         </ol>
-        <div class="hint">Claude kan lezen, documenten opslaan (altijd als nieuwe versie) en vragen toevoegen. Verwijderen of gedachten schrijven kan niet. Alleen lezen? Voeg <code>--alleen-lezen</code> toe aan het commando.</div>
+        <div class="hint">Claude kan lezen, documenten opslaan (altijd als nieuwe versie) en vragen toevoegen. Verwijderen of gedachten schrijven kan niet. Alleen lezen? Voeg <code>--read-only</code> toe aan het commando.</div>
       </div>
       <div class="panel"><h2>Meer</h2>
         <div class="form-row"><button class="btn" data-open-keys="1">Sleutels beheren</button><span class="hint">Templates beheer je in het tabblad Template van een project of chat.</span></div>
@@ -1547,7 +1547,7 @@ bash tools/mcp-installeren.sh ${esc(location.origin)}</pre></li>
   $('#set-interval').addEventListener('change', e => saveSettings({ autoSyncMinutes: Number(e.target.value) }));
   drawAiProviders();
 }
-// ---------- AI-aanbieders ----------
+// ---------- AI providers ----------
 async function drawAiProviders(editId = null) {
   const el = $('#ai-list'); if (!el) return;
   const v = await api('GET', '/api/ai').catch(e => { el.innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return null; });
@@ -1679,7 +1679,7 @@ async function saveSettings(patch, rerender = false) {
   } catch (e) { fail(e); }
 }
 
-// ---------- sleutels ----------
+// ---------- keys ----------
 async function openKeys() {
   setTopbar('Sleutels');
   state.current = null; renderSidebar();
@@ -1745,7 +1745,7 @@ async function checkUpdate() {
       ${u.dirty ? '<span class="warn">Je hebt zelf app-bestanden aangepast; commit die eerst.</span>' : ''}
       <button class="btn small primary" id="update-btn" ${u.dirty ? 'disabled' : ''}>Nu bijwerken</button>`;
     $('#update-btn').addEventListener('click', applyUpdate);
-  } catch { /* geen internet of geen git: gewoon doorgaan */ }
+  } catch { /* no internet or no git: just continue */ }
 }
 async function applyUpdate(e) {
   const b = e.currentTarget; b.disabled = true; b.textContent = 'Bijwerken…';
@@ -1761,7 +1761,7 @@ async function applyUpdate(e) {
   } catch (err) { fail(err); b.disabled = false; b.textContent = 'Nu bijwerken'; }
 }
 
-// ---------- installeerbaar op je telefoon ----------
+// ---------- installable on a phone (PWA) ----------
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }

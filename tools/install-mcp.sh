@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Zet Leerjournaal in de Claude-app (desktop) als MCP-koppeling, zodat Claude je gedachten kan lezen
-# en documenten kan terugzetten, via je eigen Claude-abonnement (geen API-sleutel nodig).
+# Adds Leerjournaal to the Claude desktop app as an MCP server, so Claude can read the user's thoughts
+# and save documents back, using the user's own Claude subscription (no API key needed).
 #
-# Gebruik (op de computer waar de Claude-app staat, vanuit de app-map van Leerjournaal):
-#   bash tools/mcp-installeren.sh                                   # server op deze computer
-#   bash tools/mcp-installeren.sh https://mini.tailXXXX.ts.net      # server op je Mac Mini
-#   bash tools/mcp-installeren.sh https://… --alleen-lezen          # Claude mag alleen lezen
+# Usage (on the computer with the Claude app, from the Leerjournaal app folder):
+#   bash tools/install-mcp.sh                                   # server on this computer
+#   bash tools/install-mcp.sh https://mini.tailXXXX.ts.net      # server on the Mac Mini
+#   bash tools/install-mcp.sh https://… --read-only             # Claude may only read
 #
-# Je andere koppelingen (zoals canvas-mcp) blijven staan. Van de instellingen wordt eerst een
-# reservekopie gemaakt. Opnieuw draaien vervangt alleen de koppeling "leerjournaal".
+# Other MCP servers (such as canvas-mcp) are kept. The Claude config is backed up first.
+# Running it again only replaces the "leerjournaal" entry. Messages to the user are Dutch.
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 URL=""; READONLY=0
-for a in "$@"; do case "$a" in --alleen-lezen) READONLY=1 ;; http://*|https://*) URL="${a%/}" ;; *) echo "Onbekend: $a"; exit 1 ;; esac; done
+for a in "$@"; do case "$a" in --read-only|--alleen-lezen) READONLY=1 ;; http://*|https://*) URL="${a%/}" ;; *) echo "Onbekend: $a"; exit 1 ;; esac; done
 
 NODE="$(command -v node || true)"
 for n in /opt/homebrew/bin/node /usr/local/bin/node; do [ -z "$NODE" ] && [ -x "$n" ] && NODE="$n"; done
@@ -50,7 +50,7 @@ if (fs.existsSync(conf)) {
 }
 cfg.mcpServers = cfg.mcpServers || {};
 const others = Object.keys(cfg.mcpServers).filter(k => k !== 'leerjournaal');
-cfg.mcpServers.leerjournaal = { command: node, args: [server], env: { LJ_URL: url, ...(readOnly === '1' ? { LJ_MCP_ALLEEN_LEZEN: '1' } : {}) } };
+cfg.mcpServers.leerjournaal = { command: node, args: [server], env: { LJ_URL: url, ...(readOnly === '1' ? { LJ_MCP_READ_ONLY: '1' } : {}) } };
 fs.writeFileSync(conf, JSON.stringify(cfg, null, 2) + '\n');
 console.log(`  Claude-app: koppeling "leerjournaal" ${others.length ? `toegevoegd (blijven staan: ${others.join(', ')})` : 'toegevoegd'}`);
 JS
@@ -62,6 +62,6 @@ echo "    \"Maak met Leerjournaal het document voor Sprint 2 van mijn project\""
 echo ""
 if command -v claude >/dev/null 2>&1; then
   echo "  Ook in Claude Code gebruiken? Voer dan eenmalig uit:"
-  echo "    claude mcp add leerjournaal -s user -e LJ_URL=$URL$([ $READONLY = 1 ] && echo ' -e LJ_MCP_ALLEEN_LEZEN=1') -- \"$NODE\" \"$SERVER\""
+  echo "    claude mcp add leerjournaal -s user -e LJ_URL=$URL$([ $READONLY = 1 ] && echo ' -e LJ_MCP_READ_ONLY=1') -- \"$NODE\" \"$SERVER\""
   echo ""
 fi

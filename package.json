@@ -1,14 +1,15 @@
 {
   "name": "leerjournaal",
-  "version": "0.10.0",
-  "description": "Gedachten vastleggen per project of chat, versleuteld opslaan in GitHub en omzetten naar documenten.",
+  "version": "0.11.0",
+  "description": "A personal learning journal: capture thoughts per project or chat, store them encrypted in GitHub and turn them into documents.",
   "private": true,
   "main": "launcher.js",
   "scripts": {
     "start": "node launcher.js",
-    "sleutels": "node tools/zoek-sleutels.js",
-    "mcp-test": "node tools/mcp-test.js",
-    "mcp": "node mcp/server.js"
+    "find-keys": "node tools/find-keys.js",
+    "sleutels": "node tools/find-keys.js",
+    "mcp": "node mcp/server.js",
+    "mcp-test": "node tools/mcp-test.js"
   },
   "engines": {
     "node": ">=18"

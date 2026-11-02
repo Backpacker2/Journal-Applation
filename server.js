@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Leerjournaal – lokale server. Geen externe packages nodig (Node 18+).
+// Leerjournaal – local server. No external packages needed (Node 18+).
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -18,8 +18,8 @@ const { markdownToHtml } = require('./lib/mdhtml');
 const providers = require('./lib/providers');
 
 const cfg = loadConfig();
-// Sleutels en opslag worden pas geladen als de poort vrij is (zie start onderaan),
-// zodat een tweede kopie van de app nooit aan je data of sleutels komt.
+// Keys and storage are only loaded once the port is free (see start at the bottom),
+// so a second copy of the app never touches the data or the keys.
 let ring, keyCreated, keyDir, store;
 let markReady;
 const ready = new Promise(r => (markReady = r));
@@ -31,7 +31,7 @@ git.netArgs = () => github.gitArgs();
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 
-// Bestandsnaam voor downloads: titel + datum, zonder vreemde tekens.
+// File name for downloads: title + date, without odd characters.
 function fileName(doc) {
   const t = String(doc.title || 'document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document';
@@ -43,7 +43,7 @@ function send(res, status, body) {
   if (body && body.__file) {
     res.writeHead(status, {
       'content-type': body.type, 'cache-control': 'no-store',
-      // ASCII-naam voor oude programma's, plus de echte naam (met accenten) volgens RFC 5987.
+      // ASCII name for old programs, plus the real name (with accents) per RFC 5987.
       'content-disposition': `attachment; filename="${body.name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(body.name)}`
     });
     return res.end(body.body);
@@ -87,9 +87,9 @@ route('GET', '/api/status', async () => ({
   ...(await updater.version())
 }));
 
-// ---------- sleutels ----------
+// ---------- keys ----------
 route('GET', '/api/keys', async () => {
-  loadExtraKeys(ring, cfg, true); // pakt sleutels op die net met "npm run sleutels" zijn toegevoegd
+  loadExtraKeys(ring, cfg, true); // picks up keys just added with "npm run find-keys"
   const stats = store.keyStats();
   return {
     keyDir, primaryId: ring.primaryId,
@@ -115,17 +115,17 @@ route('POST', '/api/keys/rekey', async () => {
   return r;
 });
 
-// ---------- updates van de app zelf ----------
+// ---------- updates of the app itself ----------
 route('GET', '/api/update', async () => updater.check());
 route('POST', '/api/update', async () => {
   const r = await updater.apply();
-  // Na het antwoord stoppen met code 42: de launcher start dan de nieuwe versie.
+  // After responding, exit with code 42: the launcher then starts the new version.
   if (r.updated) setTimeout(() => process.exit(42), 300);
   return r;
 });
 
-// Snel een gedachte toevoegen, bijvoorbeeld vanuit een iPhone-opdracht (Shortcut) of Siri.
-// Body: { "text": "...", "chat": "naam van een chat of project (optioneel)" }
+// Quickly add a thought, e.g. from an iPhone Shortcut or Siri.
+// Body: { "text": "...", "chat": "name of a chat or project (optional)" }
 const QUICK_CHAT = 'Snelle gedachten';
 route('POST', '/api/quick', async (p, body) => {
   const text = String(body.text || '').trim();
@@ -180,7 +180,7 @@ route('PUT', '/api/spaces/:type/:slug/entries/:id', async ({ type, slug, id }, b
   return e;
 });
 
-// Verwijderen van één of meer gedachten/vragen: { ids: [...] }
+// Delete one or more thoughts/questions: { ids: [...] }
 route('POST', '/api/spaces/:type/:slug/entries/delete', async ({ type, slug }, body) => {
   const r = store.deleteEntries(type, slug, body.ids);
   if (r.deleted) await git.commit(`${r.deleted === 1 ? 'Gedachte' : r.deleted + ' gedachten'} verwijderd: ${type}/${slug}`);
@@ -189,7 +189,7 @@ route('POST', '/api/spaces/:type/:slug/entries/delete', async ({ type, slug }, b
 
 route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }, body = {}) => {
   const meta = store.getMeta(type, slug);
-  // In een project met chats: vragen over (en in) de gekozen chat.
+  // In a project with threads: questions about (and in) the chosen thread.
   const known = new Set((meta.threads || []).map(t => t.id));
   const thread = known.has(body.thread) ? body.thread : '';
   const entries = store.listEntries(type, slug).filter(e => !known.size || (known.has(e.thread) ? e.thread : '') === thread);
@@ -201,7 +201,7 @@ route('POST', '/api/spaces/:type/:slug/ai/questions', async ({ type, slug }, bod
   return created;
 });
 
-// Alles wat de AI nodig heeft voor een document: notities, feedback, en bij projecten de kaarten en gekoppelde documenten.
+// Everything the AI needs for a document: notes, feedback, and for projects the cards and linked documents.
 function documentPrompt(type, slug, body) {
   const isProject = type === 'projecten';
   const ctx = {};
@@ -231,7 +231,7 @@ route('POST', '/api/spaces/:type/:slug/ai/document', async ({ type, slug }, body
 route('GET', '/api/spaces/:type/:slug/documents', async ({ type, slug }) => store.listDocs(type, slug));
 route('GET', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id }) => store.getDoc(type, slug, id));
 
-// Een document als bestand: md (Markdown), txt (platte tekst) of docx (Word).
+// A document as a file: md (Markdown), txt (plain text), html or docx (Word).
 route('GET', '/api/spaces/:type/:slug/documents/:id/export/:format', async ({ type, slug, id, format }) => {
   const doc = store.getDoc(type, slug, id);
   const name = fileName(doc);
@@ -242,7 +242,7 @@ route('GET', '/api/spaces/:type/:slug/documents/:id/export/:format', async ({ ty
   throw Object.assign(new Error('Onbekend formaat'), { status: 400 });
 });
 
-// Bestand uploaden (base64 in JSON). Origineel blijft bewaard; de tekst wordt leesbaar en doorzoekbaar.
+// Upload a file (base64 in JSON). The original is kept; the text becomes readable and searchable.
 route('POST', '/api/spaces/:type/:slug/documents/upload', async ({ type, slug }, body) => {
   const data = String(body.data || '');
   if (!data || !/^[A-Za-z0-9+/=\s]+$/.test(data)) throw Object.assign(new Error('Geen bestand ontvangen.'), { status: 400 });
@@ -277,7 +277,7 @@ route('PUT', '/api/spaces/:type/:slug/documents/:id', async ({ type, slug, id },
 });
 
 // ---------- kanban ----------
-// Bordacties per project na elkaar uitvoeren, zodat verversen en bewerken elkaar niet overschrijven.
+// Run board actions per project one after another, so refreshing and editing never overwrite each other.
 const boardLocks = new Map();
 function withBoard(type, slug, fn) {
   const k = `${type}/${slug}`;
@@ -290,7 +290,7 @@ function adapterFor(board) {
   if (!creds) throw Object.assign(new Error(`Er is nog geen ${board.link.kind === 'jira' ? 'Jira' : 'Trello'}-account ingesteld (Instellingen → Koppelingen).`), { status: 400 });
   return makeAdapter(board.link.kind, creds);
 }
-// Na een lokale wijziging op een gekoppeld bord: die kaart meteen naar Trello/Jira sturen.
+// After a local change on a linked board: send that card to Trello/Jira right away.
 async function pushCard(type, slug, cardId) {
   const b = store.getBoard(type, slug);
   if (!b.link) return { board: b, summary: null };
@@ -315,11 +315,11 @@ route('PUT', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id 
 route('DELETE', '/api/spaces/:type/:slug/board/cards/:id', async ({ type, slug, id }) => withBoard(type, slug, async () => {
   const b = store.getBoard(type, slug);
   const card = b.cards.find(c => c.id === id);
-  if (b.link && card?.remote) await adapterFor(b).archiveCard(b.link.target, card.remote.id); // Trello: archiveren; Jira: weigert
+  if (b.link && card?.remote) await adapterFor(b).archiveCard(b.link.target, card.remote.id); // Trello: archive; Jira: refuses
   const r = store.deleteCard(type, slug, id); await git.commit(`Kaart verwijderd: ${type}/${slug}`); return r;
 }));
 
-// Kolom toevoegen: lokaal, of als lijst in Trello (Jira-kolommen pas je in Jira aan).
+// Add a column: locally, or as a list in Trello (Jira columns are changed in Jira itself).
 route('POST', '/api/spaces/:type/:slug/board/columns', async ({ type, slug }, body) => withBoard(type, slug, async () => {
   const name = String(body.name || '').trim().slice(0, 60);
   if (!name) throw Object.assign(new Error('Geef de kolom een naam.'), { status: 400 });
@@ -331,7 +331,7 @@ route('POST', '/api/spaces/:type/:slug/board/columns', async ({ type, slug }, bo
   return { board: b };
 }));
 
-// Koppelen, verversen, conflicten
+// Linking, refreshing, conflicts
 route('POST', '/api/spaces/:type/:slug/board/link', async ({ type, slug }, body) => withBoard(type, slug, async () => {
   const kind = body.kind === 'jira' ? 'jira' : 'trello';
   const creds = store.getConnections()[kind];
@@ -371,7 +371,7 @@ route('POST', '/api/spaces/:type/:slug/board/conflicts', async ({ type, slug }, 
   return { board: store.getBoard(type, slug), ...r };
 }));
 
-// ---------- koppelingen (accounts) ----------
+// ---------- connections (accounts) ----------
 route('GET', '/api/connections', async () => {
   const c = store.getConnections();
   return {
@@ -387,10 +387,10 @@ route('PUT', '/api/connections/:kind', async ({ kind }, body) => {
     if (!creds.key || !creds.token) throw Object.assign(new Error('Vul de API-sleutel en het token in.'), { status: 400 });
   } else if (kind === 'jira') {
     creds = { site: str(body.site).replace(/^https?:\/\//, '').replace(/\/.*$/, ''), email: str(body.email), token: str(body.token) };
-    if (/^http:\/\/(127\.0\.0\.1|localhost)/.test(str(body.site))) creds.site = str(body.site); // alleen voor tests
+    if (/^http:\/\/(127\.0\.0\.1|localhost)/.test(str(body.site))) creds.site = str(body.site); // tests only
     if (!creds.site || !creds.email || !creds.token) throw Object.assign(new Error('Vul de site, je e-mail en het API-token in.'), { status: 400 });
   } else throw Object.assign(new Error('Onbekende koppeling'), { status: 400 });
-  creds.name = await makeAdapter(kind, creds).whoami(); // test meteen of het werkt
+  creds.name = await makeAdapter(kind, creds).whoami(); // check right away that it works
   const all = store.getConnections(); all[kind] = creds; store.saveConnections(all);
   await git.commit('Koppeling bijgewerkt');
   return { configured: true, name: creds.name };
@@ -419,7 +419,7 @@ route('DELETE', '/api/spaces/:type/:slug/feedback/:id', async ({ type, slug, id 
 
 route('POST', '/api/sync', async () => git.sync());
 
-// ---------- instellingen ----------
+// ---------- settings ----------
 const THEMES = ['dark', 'light', 'night', 'sepia', 'forest', 'ocean'];
 const publicSettings = () => ({
   theme: cfg.theme, features: cfg.features, autoSync: !!cfg.autoSync, autoSyncMinutes: cfg.autoSyncMinutes,
@@ -444,7 +444,7 @@ route('PUT', '/api/settings', async (p, body) => {
   return publicSettings();
 });
 
-// ---------- AI-aanbieders ----------
+// ---------- AI providers ----------
 const aiView = () => ({
   providers: providers.list(cfg).map(providers.publicView),
   active: (providers.list(cfg).find(p => p.id === cfg.aiActive) || providers.list(cfg)[0])?.id || null,
@@ -455,7 +455,7 @@ function saveProviders(list, extra = {}) {
   saveUiSettings(patch); Object.assign(cfg, patch);
 }
 route('GET', '/api/ai', async () => aiView());
-// Modellen ophalen (ook als test van de sleutel). Met id: van een bestaande aanbieder.
+// Fetch models (also tests the key). With id: of an existing provider.
 route('POST', '/api/ai/models', async (p, body) => {
   const old = providers.list(cfg).find(x => x.id === body.id) || {};
   const prov = { ...old, provider: body.provider || old.provider, apiKey: (body.apiKey || '').trim() || old.apiKey, baseUrl: body.baseUrl ?? old.baseUrl, label: providers.KINDS[body.provider || old.provider]?.label || 'AI' };
@@ -465,7 +465,7 @@ route('POST', '/api/ai/models', async (p, body) => {
 });
 route('POST', '/api/ai/providers', async (p, body) => {
   const prov = providers.clean(body);
-  await providers.models(prov); // test: werkt de sleutel?
+  await providers.models(prov); // test: does the key work?
   const list = providers.list(cfg);
   saveProviders([...list, prov], list.length ? {} : { aiActive: prov.id });
   return aiView();
@@ -481,7 +481,7 @@ route('PUT', '/api/ai/providers/:id', async ({ id }, body) => {
 });
 route('DELETE', '/api/ai/providers/:id', async ({ id }) => {
   const list = providers.list(cfg).filter(x => x.id !== id);
-  // De oude losse sleutel ook leegmaken, anders komt "Claude" vanzelf terug.
+  // Also clear the legacy standalone key, otherwise "Claude" comes back by itself.
   saveProviders(list, id === 'claude' ? { anthropicApiKey: '' } : {});
   return aiView();
 });
@@ -491,7 +491,7 @@ route('PUT', '/api/ai/active', async (p, body) => {
   return aiView();
 });
 
-// ---------- inloggen bij GitHub ----------
+// ---------- signing in to GitHub ----------
 route('GET', '/api/github', async () => ({ ...github.status(), remote: (await git.remoteUrl()) || null }));
 route('POST', '/api/github/token', async (p, body) => {
   const token = String(body.token || '').trim();
@@ -511,22 +511,22 @@ route('POST', '/api/github/device/poll', async () => {
 });
 route('DELETE', '/api/github', async () => { github.logout(); return github.status(); });
 
-// ---------- templatebibliotheek ----------
+// ---------- template library ----------
 route('GET', '/api/templates', async () => store.listTemplates());
 route('POST', '/api/templates', async (p, body) => { const t = store.saveTemplate(body); await git.commit('Template opgeslagen'); return t; });
 route('PUT', '/api/templates/:id', async ({ id }, body) => { const t = store.saveTemplate(body, id); await git.commit('Template bijgewerkt'); return t; });
 route('DELETE', '/api/templates/:id', async ({ id }) => { const r = store.deleteTemplate(id); await git.commit('Template verwijderd'); return r; });
 
-// Een nieuwere versie van de app kan een oude, nog draaiende versie netjes laten stoppen.
+// A newer version of the app can ask an old, still running version to stop cleanly.
 route('POST', '/api/shutdown', async () => {
   console.log('\n  Een nieuwere Leerjournaal neemt het over. Deze stopt nu.\n');
   setTimeout(() => process.exit(0), 200);
   return { ok: true };
 });
 
-// ---------- toegang ----------
-// Toegestaan: localhost, je eigen Tailscale-adres (*.ts.net) en wat in allowedHosts staat.
-// De server luistert alleen op 127.0.0.1; Tailscale Serve stuurt verkeer van je telefoon door.
+// ---------- access ----------
+// Allowed: localhost, the own Tailscale address (*.ts.net) and whatever is in allowedHosts.
+// The server only listens on 127.0.0.1; Tailscale Serve forwards traffic from the phone.
 const TS_HOST_RE = /^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net(:\d+)?$/i;
 const hostName = req => String(req.headers.host || '').toLowerCase();
 function isRemoteHost(req) {
@@ -544,12 +544,12 @@ function hostAllowed(req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (!url.pathname.startsWith('/api/')) return serveStatic(req, res);
-  // Beveiliging: alleen de eigen pagina mag de API gebruiken. Andere websites kunnen deze header
-  // niet meesturen zonder toestemming, en de Host-check blokkeert DNS-rebinding.
+  // Security: only the app's own page may use the API. Other websites cannot send this header
+  // without a CORS preflight, and the Host check blocks DNS rebinding.
   if (!hostAllowed(req) || req.headers['x-leerjournaal'] !== '1') {
     return send(res, 403, { error: 'Niet toegestaan' });
   }
-  // Via Tailscale Serve: alleen de accounts uit tailscaleUsers (als die lijst is ingevuld).
+  // Via Tailscale Serve: only the accounts in tailscaleUsers (when that list is filled in).
   const tsUser = req.headers['tailscale-user-login'];
   if ((cfg.tailscaleUsers || []).length && isRemoteHost(req) && !cfg.tailscaleUsers.includes(String(tsUser || '').toLowerCase())) {
     return send(res, 403, { error: 'Dit Tailscale-account heeft geen toegang' });
@@ -572,7 +572,7 @@ const server = http.createServer(async (req, res) => {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Automatisch uploaden aan/uit en het interval; ook aangeroepen als je Instellingen wijzigt.
+// Auto upload on/off and the interval; also called when Settings change.
 let syncInterval = null;
 function applySyncSettings() {
   if (cfg.autoSync) git.enableAutoSync(); else git.disableAutoSync();
@@ -590,7 +590,7 @@ function claimPort() {
   });
 }
 
-// De poort is bezet. Is het een (oudere) Leerjournaal? Dan vragen we die om te stoppen.
+// The port is taken. Is it an (older) Leerjournaal? Then ask it to stop.
 async function handleBusyPort() {
   const base = `http://127.0.0.1:${cfg.port}`;
   const headers = { 'x-leerjournaal': '1' };
@@ -637,7 +637,7 @@ async function handleBusyPort() {
     console.log(`  ${renamed} map(pen) hernoemd naar een willekeurige code, zodat namen niet meer leesbaar zijn.`);
   }
   applySyncSettings();
-  if (cfg.autoSync) git.scheduleSync(1500); // wijzigingen die nog niet op GitHub staan meteen uploaden
+  if (cfg.autoSync) git.scheduleSync(1500); // push changes that are not on GitHub yet right away
   markReady();
   console.log(`\n  Leerjournaal draait op http://localhost:${cfg.port}\n`);
   console.log(`  Data:    ${cfg.dataDir}`);

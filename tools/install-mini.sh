@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
-# Zet Leerjournaal in één keer op je Mac Mini (Ubuntu), vanaf je Mac. Zie README hoofdstuk 13.
+# Sets up Leerjournaal on the Mac Mini (Ubuntu) in one go, run from the Mac. See README chapter 13.
 #
-# Gebruik (in Terminal op je Mac, vanuit de app-map):
-#   bash tools/mini-installeren.sh gebruiker@adres-van-de-mini
+# Usage (in Terminal on the Mac, from the app folder):
+#   bash tools/install-mini.sh user@address-of-the-mini
 #
-# Wat het doet, en wat het nooit doet:
-#   - installeert git en Node.js op de Mini (vraagt daar één keer je sudo-wachtwoord);
-#   - clonet de app en je data-repository naar ~/Leerjournaal op de Mini;
-#   - kopieert je sleutel(s) naar ~/.leerjournaal/ en je GitHub-inlog (github.json) mee;
-#   - maakt config.json en installeert de app als vaste dienst;
-#   - optioneel: Tailscale installeren en "tailscale serve" aanzetten.
-#   Bestaande bestanden op de Mini worden nooit overschreven of verwijderd: wat er al staat, wordt overgeslagen.
+# What it does, and what it never does:
+#   - installs git and Node.js on the Mini (asks for the sudo password there once);
+#   - clones the app and the data repository to ~/Leerjournaal on the Mini;
+#   - copies the key(s) to ~/.leerjournaal/ and the GitHub login (github.json);
+#   - creates config.json and installs the app as a service;
+#   - optional: installs Tailscale and enables "tailscale serve".
+#   Existing files on the Mini are never overwritten or deleted: whatever exists is skipped.
+#   Messages to the user are Dutch.
 set -euo pipefail
 
 HOST="${1:-}"
 if [ -z "$HOST" ]; then
-  echo "Gebruik: bash tools/mini-installeren.sh gebruiker@adres-van-de-mini"
-  echo "Bijvoorbeeld: bash tools/mini-installeren.sh gebruiker@192.168.1.20"
+  echo "Gebruik: bash tools/install-mini.sh gebruiker@adres-van-de-mini"
+  echo "Bijvoorbeeld: bash tools/install-mini.sh gebruiker@192.168.1.20"
   exit 1
 fi
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 stap() { echo ""; echo "==> $*"; }
 
-# Eén ssh-verbinding hergebruiken: je wachtwoord hoef je maar één keer te typen.
+# Reuse one ssh connection so the password is only typed once.
 SOCK="$HOME/.ssh/lj-mini-%r@%h:%p"
 mkdir -p "$HOME/.ssh"
 SSH=(ssh -o ControlMaster=auto -o "ControlPath=$SOCK" -o ControlPersist=15m)

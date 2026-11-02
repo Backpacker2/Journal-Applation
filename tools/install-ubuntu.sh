@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installeert Leerjournaal als vaste dienst op Ubuntu (bijv. je Mac Mini), zodat hij na een herstart vanzelf draait.
-# Gebruik:  bash tools/install-ubuntu.sh        (vanuit de app-map, als je eigen gebruiker, dus niet met sudo)
+# Installs Leerjournaal as a systemd user service on Ubuntu (e.g. the Mac Mini), so it runs again after a reboot.
+# Usage:  bash tools/install-ubuntu.sh        (from the app folder, as the normal user, not with sudo)
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NODE="$(command -v node || true)"
@@ -35,7 +35,7 @@ RestartSec=3
 WantedBy=default.target
 UNIT
 
-# Laat de dienst ook draaien als je niet bent ingelogd (na een herstart).
+# Keep the service running when nobody is logged in (after a reboot).
 ME="${USER:-$(id -un)}"
 loginctl enable-linger "$ME" 2>/dev/null || sudo loginctl enable-linger "$ME"
 systemctl --user daemon-reload

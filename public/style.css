@@ -236,7 +236,7 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 }
 .toast.error { background: var(--red); color: #fff; }
 
-/* ---------- telefoon ---------- */
+/* ---------- phone ---------- */
 .topbar, .scrim { display: none; }
 @media (max-width: 760px) {
   body { flex-direction: column; height: 100dvh; }
@@ -259,13 +259,13 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
   .composer { padding-bottom: calc(env(safe-area-inset-bottom) + 12px); }
   .header-wrap { padding-top: 12px; }
   .header-top { flex-direction: column; gap: 8px; }
-  .header-top h1 { display: none; } /* de naam staat al in de balk bovenaan */
+  .header-top h1 { display: none; } /* the name is already in the top bar */
   .header-top .sub { display: none; }
   .header-actions { width: 100%; }
   .header-actions .btn.primary { margin-left: auto; padding: 6px 12px; }
   .tabs { overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
   .tab { white-space: nowrap; padding: 8px 10px; }
-  .input-row textarea, input, textarea, select { font-size: 16px; } /* iOS zoomt niet in bij 16px */
+  .input-row textarea, input, textarea, select { font-size: 16px; } /* iOS does not zoom in at 16px */
   .tools { gap: 6px; }
   .tools .btn.small { padding: 5px 8px; }
   .thread { padding-top: 14px; }
@@ -275,7 +275,7 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
   .doc-row .doc-date { display: none; }
 }
 
-/* ---------- sleutels ---------- */
+/* ---------- keys ---------- */
 .space-item.locked { color: #8a90a3; font-style: italic; }
 .key-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .key-table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid var(--line); }
@@ -287,7 +287,7 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .notice.bad { background: rgba(226, 109, 109, 0.14); color: var(--red); }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--card-2); padding: 1px 5px; border-radius: 4px; }
 
-/* ---------- documentweergave en downloads ---------- */
+/* ---------- document view and downloads ---------- */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { background: var(--card); border: 0; color: var(--muted); padding: 7px 12px; font-size: 12px; font-weight: 600; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -298,7 +298,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .link-like:hover { color: var(--accent); }
 .doc-raw { white-space: pre-wrap; word-wrap: break-word; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0; }
 
-/* ---------- berichten beheren en archief ---------- */
+/* ---------- managing entries and archive ---------- */
 .entry-title { font-weight: 700; font-size: 15px; }
 .link.danger:hover, .btn.danger { color: var(--red); }
 .btn.danger:hover { border-color: var(--red); }
@@ -318,7 +318,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .archive-toggle .count { margin-left: auto; letter-spacing: 0; }
 .space-item.archived { opacity: .65; }
 
-/* ---------- zoeken, alle documenten, sprints ---------- */
+/* ---------- search, all documents, sprints ---------- */
 .search-wrap { padding: 0 2px 8px; }
 .search-wrap input { width: 100%; background: #1a1d27; border: 1px solid #2a2f40; border-radius: 8px; padding: 8px 10px; color: #e8eaf0; font-size: 13px; outline: none; }
 .search-wrap input:focus { border-color: var(--accent); }
@@ -381,7 +381,7 @@ select { font: inherit; color: var(--ink); background: var(--bg); border: 1px so
 .check input { accent-color: var(--accent); }
 
 
-/* ---------- instellingen ---------- */
+/* ---------- settings ---------- */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .theme-card { border: 2px solid var(--line); border-radius: 12px; padding: 0; overflow: hidden; background: none; text-align: left; color: var(--ink); }
 .theme-card.on { border-color: var(--accent); }
@@ -408,7 +408,7 @@ details.panel summary { cursor: pointer; }
 details.panel[open] summary { margin-bottom: 8px; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
-/* ---------- koppelingen Trello/Jira ---------- */
+/* ---------- Trello/Jira connections ---------- */
 .link-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; }
 .svc { font-size: 11px; font-weight: 800; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; color: #fff; }
 .svc.trello { background: #0c66e4; }
@@ -429,7 +429,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .conn details > summary::-webkit-details-marker { display: none; }
 .inline-select { background: var(--input, var(--card-2)); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; }
 
-/* ---------- kanban: werkbaar op een normaal scherm ---------- */
+/* ---------- kanban: workable on a normal screen ---------- */
 .board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }
 .board > .col { flex: 0 0 272px; scroll-snap-align: start; max-height: var(--col-max, calc(100vh - 330px)); min-height: 0; }
 .board > .col .col-cards { overflow-y: auto; flex: 1 1 auto; min-height: 8px; padding-right: 2px; margin-right: -4px; }
@@ -447,7 +447,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .board.compact .k-title-view { font-size: 13px; }
 @media (max-width: 760px) { .board > .col { flex-basis: 82vw; max-height: none; } .board > .col .col-cards { overflow: visible; } }
 
-/* ---------- documentversies ---------- */
+/* ---------- document versions ---------- */
 .doc-versions { margin: -4px 0 6px 14px; }
 .doc-versions > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); padding: 2px 0 6px; }
 .doc-row.version { padding-left: 10px; border-left: 2px solid var(--line); }
@@ -457,7 +457,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 .upload-btn { cursor: pointer; }
 
-/* ---------- chats binnen een project ---------- */
+/* ---------- threads inside a project ---------- */
 .thread-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 32px 0; max-width: 100%; }
 .tchip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .tchip span { color: var(--muted); font-weight: 500; margin-left: 3px; opacity: .8; }
@@ -467,7 +467,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .thread-pick { gap: 14px; flex-wrap: wrap; }
 @media (max-width: 760px) { .thread-bar { padding: 8px 12px 0; flex-wrap: nowrap; overflow-x: auto; } .tchip { flex-shrink: 0; } }
 
-/* ---------- AI-aanbieders ---------- */
+/* ---------- AI providers ---------- */
 .ai-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .ai-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
 .ai-row.active { border-color: var(--accent); background: var(--accent-soft); }
@@ -478,7 +478,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .field[hidden], .ai-add [hidden] { display: none !important; }
 .toggle-row .inline-select, .select-bar .inline-select { flex: 0 0 auto; width: auto; align-self: center; }
 
-/* ---------- kaarten koppelen ---------- */
+/* ---------- linking cards ---------- */
 .mention-pop { position: fixed; z-index: 60; background: var(--card); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.35); padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
 .mention-head { font-size: 11px; color: var(--muted); padding: 2px 6px 4px; font-weight: 600; }
 .mention-item { text-align: left; background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 7px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

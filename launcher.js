@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Start de server en start hem opnieuw na een update (exitcode 42).
-// Zo kan de knop "Bijwerken" in de app de nieuwe versie laden zonder dat je iets hoeft te doen.
+// Starts the server and restarts it after an update (exit code 42).
+// This lets the "Update" button in the app load the new version without any manual step.
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -19,7 +19,7 @@ function start() {
   });
 }
 
-// Ctrl+C gaat ook naar de server; de launcher wacht tot die netjes stopt.
+// Ctrl+C also reaches the server; the launcher waits until it stops cleanly.
 process.on('SIGINT', () => {});
 process.on('SIGTERM', () => { if (child) child.kill('SIGTERM'); });
 start();

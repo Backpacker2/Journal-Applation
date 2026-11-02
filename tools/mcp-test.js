@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Test de MCP-server van Leerjournaal: start hem zoals Claude dat doet en doorloopt alle hulpmiddelen.
-// Gebruik: LJ_URL=http://localhost:4173 node tools/mcp-test.js [--schrijven]
-// Zonder --schrijven worden alleen leeshulpmiddelen getest (er verandert dan niets).
+// Tests the Leerjournaal MCP server: starts it the way Claude does and runs every tool.
+// Usage: LJ_URL=http://localhost:4173 node tools/mcp-test.js [--write]
+// Without --write only the read tools are tested (nothing changes).
 const { spawn } = require('child_process');
 const path = require('path');
-const write = process.argv.includes('--schrijven');
+const write = process.argv.includes('--write') || process.argv.includes('--schrijven');
 const child = spawn(process.execPath, [path.join(__dirname, '..', 'mcp', 'server.js')], { env: process.env, stdio: ['pipe', 'pipe', 'inherit'] });
 let buf = '', nextId = 1; const waiting = new Map();
 child.stdout.on('data', d => {
@@ -21,11 +21,11 @@ const check = (label, cond, extra = '') => { console.log(`${cond ? '✓' : '✗'
 const text = r => r.result?.content?.map(c => c.text).join('\n') || r.error?.message || '';
 
 (async () => {
-  // Oudere clients: initialize
+  // Older clients: initialize
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'mcp-test', version: '1' } });
   check('initialize (oude versie)', init.result?.protocolVersion === '2025-06-18' && init.result?.serverInfo?.name === 'leerjournaal');
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-  // Nieuwe clients: server/discover en _meta per verzoek
+  // Modern clients: server/discover and _meta on every request
   const disc = await rpc('server/discover', modern({}));
   check('server/discover (nieuwe versie)', disc.result?.supportedVersions?.includes('2026-07-28'));
   const bad = await rpc('tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '1900-01-01', 'io.modelcontextprotocol/clientCapabilities': {} } });
@@ -38,7 +38,7 @@ const text = r => r.result?.content?.map(c => c.text).join('\n') || r.error?.mes
   const st = await rpc('tools/call', modern({ name: 'leerjournaal_status', arguments: {} }));
   check('leerjournaal_status', !st.result?.isError, text(st).split('\n')[0]);
   const scenario = require('./mcp-test-scenario');
-  await scenario({ rpc, modern, check, text, names, write });
+  await scenario({ rpc, modern, check, text, write });
   child.stdin.end();
   console.log(failed ? `\n${failed} test(s) mislukt` : '\nAlles geslaagd');
   process.exit(failed ? 1 : 0);

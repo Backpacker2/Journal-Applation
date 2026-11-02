@@ -52,11 +52,11 @@ je hoeft nooit meer iets opnieuw te koppelen.
 3. Maak je instellingen: `cp config.example.json config.json` en pas ze aan (zie [hoofdstuk 3](#3-instellingen-configjson)).
 4. Start de app: dubbelklik **`start.command`**, of `npm start` in de terminal. De browser opent http://localhost:4173.
 
-5. **Als app op je Mac:** dubbelklik **`Mac-app-maken.command`** (of `bash tools/maak-mac-app.sh`). Dan staat
+5. **Als app op je Mac:** dubbelklik **`Mac-app-maken.command`** (of `bash tools/make-mac-app.sh`). Dan staat
    *Leerjournaal* in je map Apps; sleep hem naar je Dock. Klik je erop, dan start hij zelf de server (als die nog niet
    draait) en opent Leerjournaal in een eigen venster (met Chrome, Edge of Brave zonder tabbladen, anders in je
    standaardbrowser). Draait de server straks op je Mac Mini, maak de app dan opnieuw met dat adres:
-   `bash tools/maak-mac-app.sh https://mini.tailXXXX.ts.net`; dan opent hij alleen dat adres.
+   `bash tools/make-mac-app.sh https://mini.tailXXXX.ts.net`; dan opent hij alleen dat adres.
 
 > **Eerste start:** staat er nog geen sleutel op de plek van `keyFile`, dan maakt de app een nieuwe.
 > **Maak daar meteen een back-up van** (bijvoorbeeld in je wachtwoordmanager). Zonder sleutel zijn je gedachten
@@ -314,6 +314,10 @@ iCloud Drive/Leerjournaal/
   oud-ac985eea.key              oude sleutel(s)
 ```
 
+**Taal van de code.** De code (namen, commentaar, scripts, MCP-hulpmiddelen) is Engels. Wat je in de app en de terminal
+leest is Nederlands. De namen in het dataformaat (`projecten/`, `gedachten/`, `ruimte.txt`, `ruw`/`eind`) blijven
+Nederlands, zodat je bestaande data leesbaar blijft.
+
 Een versleuteld bestand begint met `LJ2:<sleutel-id>:` gevolgd door onleesbare tekst. Bestanden van versie 0.1 t/m 0.3
 beginnen met `LJ1:`; die blijven gewoon werken.
 
@@ -378,7 +382,7 @@ jouw apparaten erbij kunnen. Je laptop gebruikt voortaan hetzelfde adres, zodat 
 voer dan op je **Mac** in de app-map uit:
 
 ```bash
-bash tools/mini-installeren.sh gebruiker@ip-van-de-mini
+bash tools/install-mini.sh gebruiker@ip-van-de-mini
 ```
 
 Dat script doet alles hieronder in één keer (Node, git, beide repositories, sleutels, GitHub-inlog, `config.json`,
@@ -455,14 +459,14 @@ Op de computer waar de Claude-app staat (je laptop), in je leerjournaal-map:
 
 ```bash
 git pull
-bash tools/mcp-installeren.sh https://jouw-mini.tailXXXX.ts.net     # of dubbelklik Claude-koppelen.command
+bash tools/install-mcp.sh https://jouw-mini.tailXXXX.ts.net     # of dubbelklik Claude-koppelen.command
 ```
 
 - Draait Leerjournaal op die computer zelf, laat het adres dan weg.
 - Je andere koppelingen (zoals `canvas-mcp`) blijven staan; er wordt eerst een reservekopie gemaakt van
   `~/Library/Application Support/Claude/claude_desktop_config.json`.
 - Sluit de Claude-app daarna helemaal af (Cmd+Q) en open hem opnieuw.
-- **Alleen lezen:** voeg `--alleen-lezen` toe; dan kan Claude niets opslaan.
+- **Alleen lezen:** voeg `--read-only` toe; dan kan Claude niets opslaan.
 - **Claude Code:** het script toont het commando (`claude mcp add leerjournaal …`).
 
 ### Gebruiken
@@ -478,13 +482,13 @@ Of klik in een chat op **+ → Leerjournaal** voor de kant-en-klare opdrachten: 
 
 | Hulpmiddel | Wat het doet |
 |---|---|
-| `ruimtes_lijst` | Projecten en chats, met sprints en chats binnen een project |
-| `gedachten_lezen` | Gedachten en vragen, te filteren op periode, sprint, chat of kaart |
-| `documenten_lijst`, `document_lezen` | Documenten lezen (markdown, tekst of html) |
-| `feedback_lezen`, `kaarten_lijst`, `zoeken` | Feedback, Kanbankaarten, zoeken in alles |
-| `documentopdracht` | Dezelfde opdracht als *Kopieer prompt* (regels, template, notities) |
-| `document_opslaan` | Document opslaan, altijd als nieuw document of nieuwe versie |
-| `vragen_toevoegen` | 1-5 vragen als *vraag van AI*; jij beantwoordt ze |
+| `list_spaces` | Projecten en chats, met sprints en chats binnen een project |
+| `read_thoughts` | Gedachten en vragen, te filteren op periode, sprint, chat of kaart |
+| `list_documents`, `read_document` | Documenten lezen (markdown, tekst of html) |
+| `read_feedback`, `list_cards`, `search` | Feedback, Kanbankaarten, zoeken in alles |
+| `document_task` | Dezelfde opdracht als *Kopieer prompt* (regels, template, notities) |
+| `save_document` | Document opslaan, altijd als nieuw document of nieuwe versie |
+| `add_questions` | 1-5 vragen als *vraag van AI*; jij beantwoordt ze |
 | `leerjournaal_status` | Verbinding controleren |
 
 Claude kan **niets verwijderen of overschrijven** en **geen gedachten namens jou schrijven**.
@@ -501,6 +505,6 @@ Claude kan **niets verwijderen of overschrijven** en **geen gedachten namens jou
 
 ```bash
 LJ_URL=https://jouw-mini.tailXXXX.ts.net npm run mcp-test               # alleen lezen
-LJ_URL=https://jouw-mini.tailXXXX.ts.net npm run mcp-test -- --schrijven  # maakt ook een testdocument en -vraag
+LJ_URL=https://jouw-mini.tailXXXX.ts.net npm run mcp-test -- --write      # maakt ook een testdocument en -vraag
 ```
 
